@@ -1,0 +1,1904 @@
+(function (global, factory) {
+  typeof exports === 'object' && typeof module !== 'undefined' ? module.exports = factory() :
+  typeof define === 'function' && define.amd ? define(factory) :
+  (global = typeof globalThis !== 'undefined' ? globalThis : global || self, global.wxoLoader = factory());
+})(this, (function () { 'use strict';
+
+  /**
+   * Configuration management class for wxo-js-sdk
+   * Handles validation and access to SDK configuration
+   */
+  class Config {
+    constructor() {
+      this.config = null;
+      this.defaultConfig = {
+        orchestrationID: null,
+        hostURL: null,
+        region: 'us-south',
+        deploymentPlatform: 'ibmcloud',
+        crn: null,
+        rootElementID: 'root',
+        agents: [],
+        theme: {
+          primaryColor: '#0f62fe',
+          fontFamily: 'IBM Plex Sans, sans-serif',
+          borderRadius: '8px'
+        },
+        ui: {
+          position: 'bottom-right',
+          width: '400px',
+          height: '600px',
+          expandedWidth: '800px',
+          expandedHeight: '800px',
+          showAgentSelector: true,
+          enableResize: true
+        },
+        features: {
+          feedback: true,
+          multiAgent: true,
+          fileUpload: false,
+          voiceInput: false
+        },
+        debug: false
+      };
+    }
+
+    /**
+     * Initialize configuration from window.wxOConfiguration
+     * @throws {Error} If required configuration is missing or invalid
+     */
+    init() {
+      if (!window.wxOConfiguration) {
+        throw new Error('wxOConfiguration not found. Please define window.wxOConfiguration before calling init()');
+      }
+
+      // Deep merge user config with defaults
+      this.config = this._mergeConfig(this.defaultConfig, window.wxOConfiguration);
+
+      // Validate required fields
+      this._validate();
+      if (this.config.debug) {
+        console.log('[wxo-sdk] Configuration initialized:', this.config);
+      }
+    }
+
+    /**
+     * Deep merge two configuration objects
+     * @private
+     */
+    _mergeConfig(defaults, userConfig) {
+      const merged = {
+        ...defaults
+      };
+      for (const key in userConfig) {
+        if (userConfig[key] !== null && typeof userConfig[key] === 'object' && !Array.isArray(userConfig[key])) {
+          merged[key] = this._mergeConfig(defaults[key] || {}, userConfig[key]);
+        } else {
+          merged[key] = userConfig[key];
+        }
+      }
+      return merged;
+    }
+
+    /**
+     * Validate required configuration fields
+     * @private
+     * @throws {Error} If validation fails
+     */
+    _validate() {
+      const required = ['orchestrationID', 'hostURL'];
+      const missing = required.filter(field => !this.config[field]);
+      if (missing.length > 0) {
+        throw new Error(`Missing required configuration: ${missing.join(', ')}`);
+      }
+
+      // Validate hostURL format
+      try {
+        new URL(this.config.hostURL);
+      } catch (e) {
+        throw new Error(`Invalid hostURL: ${this.config.hostURL}`);
+      }
+
+      // Validate agents array if multiAgent is enabled
+      if (this.config.features.multiAgent) {
+        if (!Array.isArray(this.config.agents) || this.config.agents.length === 0) {
+          throw new Error('agents array is required when multiAgent feature is enabled');
+        }
+
+        // Validate each agent configuration
+        // Based on IBM watsonx Orchestrate requirements
+        this.config.agents.forEach((agent, index) => {
+          const agentRequired = ['id', 'name', 'agentId'];
+          const agentMissing = agentRequired.filter(field => !agent[field]);
+          if (agentMissing.length > 0) {
+            throw new Error(`Agent at index ${index} is missing required fields: ${agentMissing.join(', ')}`);
+          }
+
+          // agentEnvironmentId is required for Live environment
+          if (!agent.agentEnvironmentId) {
+            console.warn(`[wxo-sdk] Agent at index ${index} is missing agentEnvironmentId (required for Live environment)`);
+          }
+        });
+      }
+    }
+
+    /**
+     * Get configuration value by key
+     * @param {string} key - Configuration key (supports dot notation)
+     * @returns {*} Configuration value
+     */
+    get(key) {
+      if (!this.config) {
+        throw new Error('Configuration not initialized. Call init() first.');
+      }
+      const keys = key.split('.');
+      let value = this.config;
+      for (const k of keys) {
+        if (value && typeof value === 'object' && k in value) {
+          value = value[k];
+        } else {
+          return undefined;
+        }
+      }
+      return value;
+    }
+
+    /**
+     * Get all configuration
+     * @returns {Object} Complete configuration object
+     */
+    getAll() {
+      if (!this.config) {
+        throw new Error('Configuration not initialized. Call init() first.');
+      }
+      return {
+        ...this.config
+      };
+    }
+
+    /**
+     * Get agent configuration by ID
+     * @param {string} agentId - Agent ID
+     * @returns {Object|null} Agent configuration or null if not found
+     */
+    getAgent(agentId) {
+      if (!this.config || !this.config.agents) {
+        return null;
+      }
+      return this.config.agents.find(agent => agent.id === agentId) || null;
+    }
+
+    /**
+     * Get all agents
+     * @returns {Array} Array of agent configurations
+     */
+    getAgents() {
+      return this.config?.agents || [];
+    }
+
+    /**
+     * Check if a feature is enabled
+     * @param {string} featureName - Feature name
+     * @returns {boolean} True if feature is enabled
+     */
+    isFeatureEnabled(featureName) {
+      return this.config?.features?.[featureName] === true;
+    }
+
+    /**
+     * Check if debug mode is enabled
+     * @returns {boolean} True if debug mode is enabled
+     */
+    isDebug() {
+      return this.config?.debug === true;
+    }
+  }
+
+  // Export singleton instance
+  var Config$1 = new Config();
+
+  // Made with Bob
+
+  /**
+   * HTTP client for watsonx Orchestrate API communication
+   * Uses IBM custom headers for authentication (no Bearer token required)
+   */
+  class HttpClient {
+    constructor(config) {
+      this.config = config;
+      this.baseURL = config.get('hostURL');
+      this.baseHeaders = {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      };
+      this.ibmHeaders = {};
+    }
+
+    /**
+     * Set IBM authentication headers
+     * @param {string} userId - Anonymous user ID (e.g. "anonymous-{uuid}")
+     */
+    setIBMHeaders(userId) {
+      this.ibmHeaders = {
+        'x-ibm-wo-orchestrate-id': this.config.get('orchestrationID'),
+        'x-ibm-wo-user-id': userId
+      };
+      const crn = this.config.get('crn');
+      if (crn) {
+        this.ibmHeaders['x-ibm-wo-crn'] = crn;
+      }
+    }
+
+    /**
+     * Get all current headers (base + IBM)
+     * @returns {Object}
+     */
+    getHeaders(extra = {}) {
+      return {
+        ...this.baseHeaders,
+        ...this.ibmHeaders,
+        ...extra
+      };
+    }
+
+    /**
+     * Build full URL from path
+     * @private
+     */
+    _buildURL(path) {
+      const base = this.baseURL.endsWith('/') ? this.baseURL.slice(0, -1) : this.baseURL;
+      const p = path.startsWith('/') ? path : `/${path}`;
+      return `${base}${p}`;
+    }
+
+    /**
+     * Make HTTP request
+     * @private
+     */
+    async _request(method, path, options = {}) {
+      const url = this._buildURL(path);
+      const {
+        body,
+        headers = {},
+        ...rest
+      } = options;
+      const requestConfig = {
+        method,
+        headers: this.getHeaders(headers),
+        ...rest
+      };
+      if (body !== undefined) {
+        requestConfig.body = typeof body === 'string' ? body : JSON.stringify(body);
+      }
+      if (this.config.isDebug()) {
+        console.log(`[wxo-sdk] ${method} ${url}`, requestConfig);
+      }
+      const response = await fetch(url, requestConfig);
+      const contentType = response.headers.get('content-type') || '';
+      let data;
+      if (contentType.includes('application/json')) {
+        data = await response.json();
+      } else {
+        data = await response.text();
+      }
+      if (!response.ok) {
+        const error = new Error(data && data.message || `HTTP ${response.status}: ${response.statusText}`);
+        error.status = response.status;
+        error.response = data;
+        throw error;
+      }
+      if (this.config.isDebug()) {
+        console.log(`[wxo-sdk] Response:`, data);
+      }
+      return data;
+    }
+
+    /**
+     * Make a streaming POST request, yielding SSE/chunk lines
+     * @param {string} path
+     * @param {Object} body
+     * @param {Object} options
+     * @returns {Response} raw fetch Response for stream reading
+     */
+    async stream(path, body, options = {}) {
+      const url = this._buildURL(path);
+      const {
+        headers = {}
+      } = options;
+      const requestConfig = {
+        method: 'POST',
+        headers: this.getHeaders(headers),
+        body: JSON.stringify(body)
+      };
+      if (this.config.isDebug()) {
+        console.log(`[wxo-sdk] STREAM POST ${url}`, requestConfig);
+      }
+      const response = await fetch(url, requestConfig);
+      if (!response.ok) {
+        const text = await response.text();
+        const error = new Error(`HTTP ${response.status}: ${response.statusText}`);
+        error.status = response.status;
+        error.response = text;
+        throw error;
+      }
+      return response;
+    }
+    async get(path, options = {}) {
+      return this._request('GET', path, options);
+    }
+    async post(path, body, options = {}) {
+      return this._request('POST', path, {
+        ...options,
+        body
+      });
+    }
+    async patch(path, body, options = {}) {
+      return this._request('PATCH', path, {
+        ...options,
+        body
+      });
+    }
+    async delete(path, options = {}) {
+      return this._request('DELETE', path, options);
+    }
+  }
+
+  // Made with Bob
+
+  /**
+   * Authentication manager for watsonx Orchestrate
+   * Uses anonymous user ID - no token authentication required
+   */
+  class AuthManager {
+    constructor(config) {
+      this.config = config;
+      this.userId = null;
+    }
+
+    /**
+     * Initialize authentication
+     * Generates an anonymous user ID
+     * @returns {Promise<void>}
+     */
+    async init() {
+      this.userId = `anonymous-${this._generateUUID()}`;
+      if (this.config.isDebug()) {
+        console.log('[wxo-sdk] Anonymous user ID generated:', this.userId);
+      }
+    }
+
+    /**
+     * Get the anonymous user ID
+     * @returns {string|null}
+     */
+    getUserId() {
+      return this.userId;
+    }
+
+    /**
+     * Generate a UUID v4
+     * @private
+     * @returns {string}
+     */
+    _generateUUID() {
+      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+        const r = Math.random() * 16 | 0;
+        const v = c === 'x' ? r : r & 0x3 | 0x8;
+        return v.toString(16);
+      });
+    }
+
+    /**
+     * Destroy and cleanup
+     */
+    destroy() {
+      this.userId = null;
+    }
+  }
+
+  // Made with Bob
+
+  /**
+   * Chat manager for handling chat sessions and message flow
+   *
+   * API Flow (discovered via DevTools):
+   * 1. First message sent → POST /mfe_home_archer/api/v1/threads  (create thread)
+   * 2. Every message     → POST /mfe_home_archer/api/v1/orchestrate/runs?stream=true&...
+   * 3. Session end       → PATCH /mfe_home_archer/api/v1/threads/{thread_id}
+   *
+   * Authentication: IBM custom headers only (no Bearer token)
+   *   x-ibm-wo-orchestrate-id, x-ibm-wo-user-id, x-ibm-wo-crn
+   */
+  class ChatManager {
+    constructor(config, httpClient) {
+      this.config = config;
+      this.httpClient = httpClient;
+      this.sessions = new Map(); // agentId -> session data
+      this.currentAgentId = null;
+      this.messageHandlers = [];
+      this.errorHandlers = [];
+    }
+
+    /**
+     * Initialize chat manager (no-op, kept for API compatibility)
+     */
+    async init() {
+      if (this.config.isDebug()) {
+        console.log('[wxo-sdk] ChatManager initialized');
+      }
+    }
+
+    /**
+     * Switch to a different agent (creates session object, no API call yet)
+     * @param {string} agentId
+     * @returns {Object} session data
+     */
+    async switchAgent(agentId) {
+      const agent = this.config.getAgent(agentId);
+      if (!agent) {
+        throw new Error(`Agent not found: ${agentId}`);
+      }
+      this.currentAgentId = agentId;
+      if (!this.sessions.has(agentId)) {
+        // Session will be lazily created on first message
+        this.sessions.set(agentId, {
+          agentId,
+          agent,
+          threadId: null,
+          messages: [],
+          isActive: true
+        });
+      }
+      if (this.config.isDebug()) {
+        console.log(`[wxo-sdk] Switched to agent: ${agentId}`);
+      }
+      return this.sessions.get(agentId);
+    }
+
+    /**
+     * Send message to current agent
+     * Creates thread on first message, then posts to /orchestrate/runs
+     * @param {string} text
+     * @param {Object} options
+     * @returns {Promise<Object>} user message object
+     */
+    async sendMessage(text, options = {}) {
+      if (!this.currentAgentId) {
+        throw new Error('No active agent. Call startChat() first.');
+      }
+      const session = this.sessions.get(this.currentAgentId);
+      if (!session) {
+        throw new Error(`No session for agent: ${this.currentAgentId}`);
+      }
+
+      // Create thread on first message (lazy initialization)
+      if (!session.threadId) {
+        await this._createThread(session, text);
+      }
+
+      // Build user message
+      const userMessage = {
+        id: this._generateMessageId(),
+        text,
+        sender: 'user',
+        timestamp: Date.now()
+      };
+      session.messages.push(userMessage);
+      // Note: user messages are returned to the caller for display.
+      // onMessage handlers are reserved for agent responses only.
+
+      // Send to orchestrate/runs with streaming
+      try {
+        await this._sendToRuns(session, text);
+      } catch (error) {
+        console.error('[wxo-sdk] Failed to send message:', error);
+        this._handleError(error);
+        throw error;
+      }
+      return userMessage;
+    }
+
+    /**
+     * Create a thread for the session
+     * POST /mfe_home_archer/api/v1/threads
+     * @private
+     */
+    async _createThread(session, firstMessageText) {
+      const path = '/mfe_home_archer/api/v1/threads';
+      const body = {
+        title: firstMessageText,
+        agent_id: session.agent.agentId
+      };
+      if (this.config.isDebug()) {
+        console.log('[wxo-sdk] Creating thread:', body);
+      }
+      const response = await this.httpClient.post(path, body);
+      session.threadId = response.thread_id;
+      if (this.config.isDebug()) {
+        console.log('[wxo-sdk] Thread created:', session.threadId);
+      }
+    }
+
+    /**
+     * Send message via orchestrate/runs (streaming)
+     * POST /mfe_home_archer/api/v1/orchestrate/runs?stream=true&stream_timeout=180000&multiple_content=true
+     * @private
+     */
+    async _sendToRuns(session, text) {
+      const path = '/mfe_home_archer/api/v1/orchestrate/runs?stream=true&stream_timeout=180000&multiple_content=true';
+      const body = {
+        message: {
+          role: 'user',
+          content: text,
+          additional_properties: {}
+        },
+        context: {},
+        agent_id: session.agent.agentId,
+        thread_id: session.threadId,
+        environment_id: session.agent.agentEnvironmentId || ''
+      };
+      if (this.config.isDebug()) {
+        console.log('[wxo-sdk] Sending to runs:', body);
+      }
+      const response = await this.httpClient.stream(path, body);
+      await this._handleStreamResponse(response, session);
+    }
+
+    /**
+     * Handle streaming response (SSE or chunked)
+     * @private
+     */
+    async _handleStreamResponse(response, session) {
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let agentText = '';
+      try {
+        while (true) {
+          const {
+            done,
+            value
+          } = await reader.read();
+          if (done) break;
+          const chunk = decoder.decode(value, {
+            stream: true
+          });
+          buffer += chunk;
+
+          // Process SSE lines
+          const lines = buffer.split('\n');
+          buffer = lines.pop(); // keep incomplete last line
+
+          for (const line of lines) {
+            this._processStreamLine(line, text => {
+              agentText += text;
+            });
+          }
+        }
+
+        // Process any remaining buffer content after stream ends
+        if (buffer.trim()) {
+          if (this.config.isDebug()) {
+            console.log('[wxo-sdk] Stream remaining buffer:', JSON.stringify(buffer));
+          }
+          this._processStreamLine(buffer, text => {
+            agentText += text;
+          });
+        }
+      } finally {
+        reader.releaseLock();
+      }
+
+      // Emit the complete agent message
+      if (agentText) {
+        const agentMessage = {
+          id: this._generateMessageId(),
+          text: agentText,
+          sender: 'agent',
+          timestamp: Date.now()
+        };
+        session.messages.push(agentMessage);
+        this._triggerMessageHandlers(agentMessage);
+      }
+      if (this.config.isDebug()) {
+        console.log('[wxo-sdk] Stream complete. Agent response:', agentText);
+      }
+    }
+
+    /**
+     * Process a single line from the stream and call onText with extracted text
+     * @private
+     */
+    _processStreamLine(line, onText) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed === ':') return;
+      if (trimmed.startsWith('data:')) {
+        const data = trimmed.slice(5).trim();
+        if (!data || data === '[DONE]') return;
+        try {
+          const parsed = JSON.parse(data);
+          if (this.config.isDebug()) {
+            console.log('[wxo-sdk] Stream event:', parsed);
+          }
+          const text = this._extractTextFromEvent(parsed);
+          if (text) onText(text);
+        } catch (_) {
+          if (data) onText(data);
+        }
+      } else {
+        try {
+          const parsed = JSON.parse(trimmed);
+          if (this.config.isDebug()) {
+            console.log('[wxo-sdk] Stream JSON chunk:', parsed);
+          }
+          const text = this._extractTextFromEvent(parsed);
+          if (text) onText(text);
+        } catch (_) {
+          onText(trimmed);
+        }
+      }
+    }
+
+    /**
+     * Extract text content from an IBM watsonx Orchestrate stream event
+     * Format: { id, event, data: { delta: { content: [{type, text: {value}}] } } }
+     * @private
+     */
+    _extractTextFromEvent(parsed) {
+      // IBM watsonx Orchestrate streaming format: {id, event, data}
+      if (parsed.event) {
+        if (parsed.event === 'message.delta') {
+          const content = parsed.data?.delta?.content;
+          if (Array.isArray(content)) {
+            return content.filter(c => c.response_type === 'text' || c.type === 'text').map(c => typeof c.text === 'string' ? c.text : c.text?.value ?? '').join('');
+          }
+          if (typeof content === 'string') return content;
+        }
+        // message.completed: fallback for full final text
+        if (parsed.event === 'message.completed') {
+          const content = parsed.data?.content ?? parsed.data?.delta?.content;
+          if (Array.isArray(content)) {
+            return content.filter(c => c.response_type === 'text' || c.type === 'text').map(c => typeof c.text === 'string' ? c.text : c.text?.value ?? '').join('');
+          }
+        }
+        return null; // all other events (run.started, run.completed, etc.)
+      }
+
+      // Fallback for other formats
+      if (typeof parsed === 'string') return parsed;
+      if (parsed.delta?.content) return parsed.delta.content;
+      if (parsed.choices?.[0]?.delta?.content) return parsed.choices[0].delta.content;
+      return null;
+    }
+
+    /**
+     * Send feedback for a message
+     * @param {string} messageId
+     * @param {string} feedback - 'positive' or 'negative'
+     * @param {string} comment
+     */
+    async sendFeedback(messageId, feedback, comment = '') {
+      if (!this.currentAgentId) {
+        throw new Error('No active agent');
+      }
+      const session = this.sessions.get(this.currentAgentId);
+      if (!session || !session.threadId) {
+        throw new Error('No active thread');
+      }
+      await this.httpClient.post('/mfe_home_archer/api/v1/feedback', {
+        thread_id: session.threadId,
+        message_id: messageId,
+        feedback,
+        comment
+      });
+    }
+
+    /**
+     * Get messages for current agent
+     * @returns {Array}
+     */
+    getMessages() {
+      if (!this.currentAgentId) return [];
+      const session = this.sessions.get(this.currentAgentId);
+      return session ? [...session.messages] : [];
+    }
+
+    /**
+     * Get messages for a specific agent
+     * @param {string} agentId
+     * @returns {Array}
+     */
+    getAgentMessages(agentId) {
+      const session = this.sessions.get(agentId);
+      return session ? [...session.messages] : [];
+    }
+
+    /**
+     * Clear messages for current agent
+     */
+    clearMessages() {
+      if (!this.currentAgentId) return;
+      const session = this.sessions.get(this.currentAgentId);
+      if (session) session.messages = [];
+    }
+
+    /**
+     * End session for an agent
+     * PATCH /mfe_home_archer/api/v1/threads/{thread_id}
+     * @param {string} agentId
+     */
+    async endSession(agentId) {
+      const session = this.sessions.get(agentId);
+      if (!session || !session.threadId) {
+        this.sessions.delete(agentId);
+        return;
+      }
+      try {
+        await this.httpClient.patch(`/mfe_home_archer/api/v1/threads/${session.threadId}`, {
+          status: 'closed'
+        });
+        if (this.config.isDebug()) {
+          console.log(`[wxo-sdk] Thread closed: ${session.threadId}`);
+        }
+      } catch (error) {
+        console.warn('[wxo-sdk] Failed to close thread (non-fatal):', error.message);
+      }
+      session.isActive = false;
+      this.sessions.delete(agentId);
+      if (this.currentAgentId === agentId) {
+        this.currentAgentId = null;
+      }
+    }
+
+    /**
+     * Register message handler
+     * @param {Function} handler
+     */
+    onMessage(handler) {
+      this.messageHandlers.push(handler);
+    }
+
+    /**
+     * Register error handler
+     * @param {Function} handler
+     */
+    onError(handler) {
+      this.errorHandlers.push(handler);
+    }
+
+    /** @private */
+    _triggerMessageHandlers(message) {
+      this.messageHandlers.forEach(h => {
+        try {
+          h(message);
+        } catch (e) {
+          console.error('[wxo-sdk] Message handler error:', e);
+        }
+      });
+    }
+
+    /** @private */
+    _handleError(error) {
+      this.errorHandlers.forEach(h => {
+        try {
+          h(error);
+        } catch (e) {
+          console.error('[wxo-sdk] Error handler error:', e);
+        }
+      });
+    }
+
+    /** @private */
+    _generateMessageId() {
+      return `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    }
+
+    /**
+     * Cleanup all sessions
+     */
+    destroy() {
+      for (const agentId of this.sessions.keys()) {
+        this.endSession(agentId);
+      }
+      this.sessions.clear();
+      this.messageHandlers = [];
+      this.errorHandlers = [];
+      this.currentAgentId = null;
+    }
+  }
+
+  // Made with Bob
+
+  /**
+   * Main client class for watsonx Orchestrate SDK
+   */
+  class WxOClient {
+    constructor() {
+      this.config = Config$1;
+      this.httpClient = null;
+      this.authManager = null;
+      this.chatManager = null;
+      this.isInitialized = false;
+    }
+
+    /**
+     * Initialize the SDK
+     * @returns {Promise<void>}
+     */
+    async init() {
+      if (this.isInitialized) {
+        if (this.config.isDebug()) {
+          console.log('[wxo-sdk] Already initialized');
+        }
+        return;
+      }
+      try {
+        // Initialize configuration
+        this.config.init();
+
+        // Initialize HTTP client
+        this.httpClient = new HttpClient(this.config);
+
+        // Initialize authentication (generates anonymous user ID)
+        this.authManager = new AuthManager(this.config);
+        await this.authManager.init();
+
+        // Set IBM custom headers on HTTP client
+        this.httpClient.setIBMHeaders(this.authManager.getUserId());
+
+        // Initialize chat manager
+        this.chatManager = new ChatManager(this.config, this.httpClient);
+        await this.chatManager.init();
+        this.isInitialized = true;
+        if (this.config.isDebug()) {
+          console.log('[wxo-sdk] SDK initialized successfully');
+        }
+      } catch (error) {
+        console.error('[wxo-sdk] Initialization failed:', error);
+        throw error;
+      }
+    }
+
+    /**
+     * Start chat with an agent
+     * @param {string} agentId
+     * @returns {Promise<Object>} session data
+     */
+    async startChat(agentId) {
+      this._ensureInitialized();
+      return await this.chatManager.switchAgent(agentId);
+    }
+
+    /**
+     * Send message to current agent
+     * @param {string} text
+     * @param {Object} options
+     * @returns {Promise<Object>} user message object
+     */
+    async sendMessage(text, options = {}) {
+      this._ensureInitialized();
+      return await this.chatManager.sendMessage(text, options);
+    }
+
+    /**
+     * Send feedback for a message
+     * @param {string} messageId
+     * @param {boolean} isPositive
+     * @param {string} comment
+     */
+    async sendFeedback(messageId, isPositive, comment = '') {
+      this._ensureInitialized();
+      const feedback = isPositive ? 'positive' : 'negative';
+      return await this.chatManager.sendFeedback(messageId, feedback, comment);
+    }
+
+    /**
+     * Get messages for current agent
+     * @returns {Array}
+     */
+    getMessages() {
+      this._ensureInitialized();
+      return this.chatManager.getMessages();
+    }
+
+    /**
+     * Get messages for a specific agent
+     * @param {string} agentId
+     * @returns {Array}
+     */
+    getAgentMessages(agentId) {
+      this._ensureInitialized();
+      return this.chatManager.getAgentMessages(agentId);
+    }
+
+    /**
+     * Clear messages for current agent
+     */
+    clearMessages() {
+      this._ensureInitialized();
+      this.chatManager.clearMessages();
+    }
+
+    /**
+     * Switch to a different agent
+     * @param {string} agentId
+     * @returns {Promise<Object>} session data
+     */
+    async switchAgent(agentId) {
+      this._ensureInitialized();
+      return await this.chatManager.switchAgent(agentId);
+    }
+
+    /**
+     * Get all agent configurations
+     * @returns {Array}
+     */
+    getAgents() {
+      this._ensureInitialized();
+      return this.config.getAgents();
+    }
+
+    /**
+     * Get a specific agent configuration
+     * @param {string} agentId
+     * @returns {Object|null}
+     */
+    getAgent(agentId) {
+      this._ensureInitialized();
+      return this.config.getAgent(agentId);
+    }
+
+    /**
+     * Register message handler
+     * @param {Function} handler
+     */
+    onMessage(handler) {
+      this._ensureInitialized();
+      this.chatManager.onMessage(handler);
+    }
+
+    /**
+     * Register error handler
+     * @param {Function} handler
+     */
+    onError(handler) {
+      this._ensureInitialized();
+      this.chatManager.onError(handler);
+    }
+
+    /**
+     * End chat session for an agent
+     * @param {string} agentId
+     */
+    async endChat(agentId) {
+      this._ensureInitialized();
+      return await this.chatManager.endSession(agentId);
+    }
+
+    /**
+     * Disconnect and cleanup
+     */
+    disconnect() {
+      if (!this.isInitialized) return;
+      if (this.chatManager) {
+        this.chatManager.destroy();
+      }
+      if (this.authManager) {
+        this.authManager.destroy();
+      }
+      this.isInitialized = false;
+      if (this.config.isDebug()) {
+        console.log('[wxo-sdk] SDK disconnected');
+      }
+    }
+
+    /**
+     * Check if SDK is initialized
+     * @returns {boolean}
+     */
+    isReady() {
+      return this.isInitialized;
+    }
+
+    /**
+     * Get SDK configuration
+     * @returns {Object}
+     */
+    getConfig() {
+      return this.config.getAll();
+    }
+
+    /** @private */
+    _ensureInitialized() {
+      if (!this.isInitialized) {
+        throw new Error('SDK not initialized. Call init() first.');
+      }
+    }
+  }
+
+  // Made with Bob
+
+  /**
+   * Floating chat button - renders in the bottom-right corner of the page
+   */
+  class FloatingButton {
+    constructor(onClick) {
+      this.onClick = onClick;
+      this.el = null;
+    }
+    render(container) {
+      this.el = document.createElement('div');
+      this.el.className = 'wxo-floating-btn';
+      this.el.setAttribute('aria-label', 'Open chat');
+      this.el.innerHTML = `
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="white" width="28" height="28">
+        <path d="M16 2C8.3 2 2 8.3 2 16s6.3 14 14 14c2.3 0 4.5-.6 6.5-1.6L28 30l-1.6-5.5C27.4 22.5 30 19.4 30 16 30 8.3 23.7 2 16 2zm0 26c-6.6 0-12-5.4-12-12S9.4 4 16 4s12 5.4 12 12-5.4 12-12 12z"/>
+        <path d="M9 13h14v2H9zm0 4h10v2H9z"/>
+      </svg>
+    `;
+      this.el.addEventListener('click', this.onClick);
+      container.appendChild(this.el);
+    }
+    show() {
+      if (this.el) this.el.style.display = 'flex';
+    }
+    hide() {
+      if (this.el) this.el.style.display = 'none';
+    }
+    setActive(active) {
+      if (this.el) {
+        this.el.classList.toggle('wxo-floating-btn--active', active);
+      }
+    }
+    destroy() {
+      if (this.el && this.el.parentNode) {
+        this.el.parentNode.removeChild(this.el);
+      }
+      this.el = null;
+    }
+  }
+
+  // Made with Bob
+
+  /**
+   * Agent selector - shows list of agents above the floating button
+   * Visible when user clicks the floating button and multiple agents are configured
+   */
+  class AgentSelector {
+    constructor(agents, onAgentSelect) {
+      this.agents = agents;
+      this.onAgentSelect = onAgentSelect;
+      this.el = null;
+    }
+    render(container) {
+      this.el = document.createElement('div');
+      this.el.className = 'wxo-agent-selector';
+      this.el.style.display = 'none';
+      const total = this.agents.length;
+      this.agents.forEach((agent, index) => {
+        const btn = document.createElement('div');
+        btn.className = 'wxo-agent-item';
+        btn.setAttribute('aria-label', agent.name);
+        // Bottom item (closest to button) animates first; top items follow with increasing delay
+        btn.dataset.animDelay = `${(total - 1 - index) * 0.07}s`;
+        const labelEl = document.createElement('div');
+        labelEl.className = 'wxo-agent-item__label';
+        labelEl.textContent = agent.name;
+        btn.appendChild(labelEl);
+        btn.addEventListener('click', () => this.onAgentSelect(agent.id));
+        this.el.appendChild(btn);
+      });
+      container.appendChild(this.el);
+    }
+    show() {
+      if (!this.el) return;
+      this.el.style.display = 'flex';
+      // Restart rise animations every time the selector opens
+      this.el.querySelectorAll('.wxo-agent-item').forEach(item => {
+        item.style.animation = 'none';
+        void item.offsetWidth; // force reflow
+        item.style.animationDelay = item.dataset.animDelay || '0s';
+        item.style.animation = '';
+      });
+    }
+    hide() {
+      if (this.el) this.el.style.display = 'none';
+    }
+    destroy() {
+      if (this.el && this.el.parentNode) {
+        this.el.parentNode.removeChild(this.el);
+      }
+      this.el = null;
+    }
+  }
+
+  // Made with Bob
+
+  /**
+   * Chat window UI component
+   * Renders the full chat interface: header, messages, input, feedback buttons
+   */
+  class ChatWindow {
+    constructor({
+      agent,
+      messages = [],
+      onSend,
+      onFeedback,
+      onMinimize,
+      onReload,
+      feedbackEnabled = true
+    }) {
+      this.agent = agent;
+      this.messages = [...messages];
+      this.onSend = onSend;
+      this.onFeedback = onFeedback;
+      this.onMinimize = onMinimize;
+      this.onReload = onReload;
+      this.feedbackEnabled = feedbackEnabled;
+      this.el = null;
+      this.messagesEl = null;
+      this.inputEl = null;
+      this.sendBtn = null;
+      this.loadingEl = null;
+      this.isExpanded = false;
+    }
+    render(container) {
+      this.el = document.createElement('div');
+      this.el.className = 'wxo-chat-window';
+      this.el.innerHTML = `
+      <div class="wxo-chat-header">
+        <div class="wxo-chat-header__title">
+          <span class="wxo-chat-header__icon">${this.agent.icon || '💬'}</span>
+          <span class="wxo-chat-header__name">${this._escapeHtml(this.agent.name)}</span>
+        </div>
+        <div class="wxo-chat-header__actions">
+          <button class="wxo-btn-icon wxo-btn-reload" aria-label="Reload" title="会話をリセット">↺</button>
+          <button class="wxo-btn-icon wxo-btn-resize" aria-label="Resize" title="サイズ変更">⤢</button>
+          <button class="wxo-btn-icon wxo-btn-minimize" aria-label="Minimize" title="最小化">−</button>
+        </div>
+      </div>
+      <div class="wxo-chat-messages"></div>
+      <div class="wxo-chat-input-area">
+        <div class="wxo-input-wrap">
+          <textarea class="wxo-chat-input" rows="1" placeholder="何かを入力してください..."></textarea>
+          <button class="wxo-chat-send" aria-label="送信">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" xmlns="http://www.w3.org/2000/svg">
+              <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+    `;
+      this.messagesEl = this.el.querySelector('.wxo-chat-messages');
+      this.inputEl = this.el.querySelector('.wxo-chat-input');
+      this.sendBtn = this.el.querySelector('.wxo-chat-send');
+
+      // Re-render existing messages
+      this.messages.forEach(msg => this._appendMessageEl(msg));
+
+      // Event listeners
+      this.el.querySelector('.wxo-btn-minimize').addEventListener('click', () => this.onMinimize());
+      this.el.querySelector('.wxo-btn-reload').addEventListener('click', () => this.onReload());
+      this.el.querySelector('.wxo-btn-resize').addEventListener('click', () => this._toggleResize());
+      this.sendBtn.addEventListener('click', () => this._handleSend());
+      // Enter to send, Shift+Enter for newline
+      this.inputEl.addEventListener('keydown', e => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          this._handleSend();
+        }
+      });
+      // Auto-resize + toggle send button
+      this.inputEl.addEventListener('input', () => {
+        this.sendBtn.disabled = this.inputEl.value.trim() === '';
+        this._resizeInput();
+      });
+      this.sendBtn.disabled = true; // initially empty
+
+      container.appendChild(this.el);
+      this._scrollToBottom();
+    }
+    addMessage(message) {
+      this._hideLoading();
+      this.messages.push(message);
+      this._appendMessageEl(message);
+      this._scrollToBottom();
+      if (message.sender === 'agent') {
+        this._setInputDisabled(false);
+      }
+    }
+    _handleSend() {
+      if (!this.inputEl || this.sendBtn.disabled) return;
+      const text = this.inputEl.value.trim();
+      if (!text) return;
+      this.inputEl.value = '';
+      this._resizeInput();
+      this._setInputDisabled(true);
+
+      // Display user message immediately
+      this.addMessage({
+        text,
+        sender: 'user',
+        timestamp: Date.now()
+      });
+      // Show loading indicator while waiting for agent
+      this._showLoading();
+      this.onSend(text).catch(() => {
+        this._hideLoading();
+        this._setInputDisabled(false);
+      });
+    }
+    _resizeInput() {
+      if (!this.inputEl) return;
+      this.inputEl.style.height = 'auto';
+      this.inputEl.style.height = this.inputEl.scrollHeight + 'px';
+    }
+    _setInputDisabled(disabled) {
+      if (this.inputEl) this.inputEl.disabled = disabled;
+      if (this.sendBtn) this.sendBtn.disabled = disabled;
+    }
+
+    /**
+     * Append a message bubble with sender name + time above it.
+     * @param {Object} message
+     * @param {boolean} isLoading - renders animated dots instead of text
+     * @returns {HTMLElement}
+     */
+    _appendMessageEl(message, isLoading = false) {
+      const div = document.createElement('div');
+      div.className = `wxo-message wxo-message--${message.sender}`;
+      if (message.id) div.dataset.messageId = message.id;
+
+      // Meta: sender name + timestamp above the bubble
+      const metaEl = document.createElement('div');
+      metaEl.className = 'wxo-message__meta';
+      const senderName = message.sender === 'user' ? 'あなた' : this.agent.name;
+      const timeStr = new Date(message.timestamp || Date.now()).toLocaleTimeString('ja-JP', {
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+      metaEl.textContent = `${senderName}  ${timeStr}`;
+      div.appendChild(metaEl);
+
+      // Bubble content
+      const contentEl = document.createElement('div');
+      contentEl.className = 'wxo-message__content';
+      if (isLoading) {
+        contentEl.innerHTML = '<span class="wxo-loading-dots"><span>●</span><span>●</span><span>●</span></span>';
+      } else if (message.sender === 'agent' && typeof window.marked !== 'undefined') {
+        contentEl.innerHTML = window.marked.parse(message.text || '');
+      } else {
+        contentEl.textContent = message.text || '';
+      }
+      div.appendChild(contentEl);
+
+      // Feedback buttons for agent messages (not loading)
+      if (!isLoading && message.sender === 'agent' && this.feedbackEnabled && message.id && this.onFeedback) {
+        const fbEl = document.createElement('div');
+        fbEl.className = 'wxo-feedback';
+        const thumbUp = document.createElement('button');
+        thumbUp.className = 'wxo-feedback__btn';
+        thumbUp.textContent = '👍';
+        thumbUp.addEventListener('click', () => this._sendFeedback(message.id, true, fbEl));
+        const thumbDown = document.createElement('button');
+        thumbDown.className = 'wxo-feedback__btn';
+        thumbDown.textContent = '👎';
+        thumbDown.addEventListener('click', () => this._sendFeedback(message.id, false, fbEl));
+        fbEl.appendChild(thumbUp);
+        fbEl.appendChild(thumbDown);
+        div.appendChild(fbEl);
+      }
+      this.messagesEl.appendChild(div);
+      return div;
+    }
+    _showLoading() {
+      if (this.loadingEl) return; // already visible
+      this.loadingEl = this._appendMessageEl({
+        sender: 'agent',
+        timestamp: Date.now()
+      }, true);
+      this._scrollToBottom();
+    }
+    _hideLoading() {
+      if (this.loadingEl && this.loadingEl.parentNode) {
+        this.loadingEl.parentNode.removeChild(this.loadingEl);
+      }
+      this.loadingEl = null;
+    }
+    _sendFeedback(messageId, isPositive, fbEl) {
+      this.onFeedback(messageId, isPositive);
+      fbEl.innerHTML = `<span class="wxo-feedback__thanks">${isPositive ? '👍' : '👎'} フィードバックありがとうございます</span>`;
+    }
+    _toggleResize() {
+      this.isExpanded = !this.isExpanded;
+      this.el.classList.toggle('wxo-chat-window--expanded', this.isExpanded);
+      const btn = this.el.querySelector('.wxo-btn-resize');
+      btn.textContent = this.isExpanded ? '⤡' : '⤢';
+    }
+    _scrollToBottom() {
+      if (this.messagesEl) {
+        this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
+      }
+    }
+    _escapeHtml(str) {
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+    destroy() {
+      if (this.el && this.el.parentNode) {
+        this.el.parentNode.removeChild(this.el);
+      }
+      this.el = null;
+    }
+  }
+
+  // Made with Bob
+
+  /**
+   * UIManager - orchestrates the entire SDK UI
+   *
+   * States:
+   *   collapsed  - only floating button visible
+   *   expanded   - floating button (bottom) + selector above it; clicking button collapses
+   *   chat       - chat window visible; button/selector hidden
+   *
+   * Per-agent chat windows are created on first open and hidden/shown on minimize/reopen.
+   * Sessions are never ended on agent switch — only on explicit reload.
+   */
+  class UIManager {
+    constructor(config, wxoClient) {
+      this.config = config;
+      this.client = wxoClient;
+      this.state = 'collapsed';
+      this.container = null;
+      this.floatingButton = null;
+      this.agentSelector = null;
+      this.chatWindows = new Map(); // agentId → ChatWindow
+      this.currentAgentId = null;
+      this._outsideClickHandler = null;
+    }
+    init() {
+      this.container = document.createElement('div');
+      this.container.id = 'wxo-ui-container';
+      document.body.appendChild(this.container);
+      this._injectStyles();
+
+      // Floating button (always rendered, shown/hidden by state)
+      this.floatingButton = new FloatingButton(() => this._onFloatingButtonClick());
+      this.floatingButton.render(this.container);
+
+      // Agent selector (only rendered if multiple agents)
+      const agents = this.config.getAgents();
+      if (agents.length > 1) {
+        this.agentSelector = new AgentSelector(agents, agentId => this._onAgentSelect(agentId));
+        this.agentSelector.render(this.container);
+      }
+
+      // Route incoming messages to the active chat window
+      this.client.onMessage(message => {
+        if (this.currentAgentId) {
+          const win = this.chatWindows.get(this.currentAgentId);
+          if (win) win.addMessage(message);
+        }
+      });
+      this.client.onError(error => {
+        console.error('[wxo-sdk] Chat error:', error);
+      });
+      if (this.config.isDebug()) {
+        console.log('[wxo-sdk] UIManager initialized');
+      }
+    }
+
+    // ─── Event handlers ────────────────────────────────────────────────────────
+
+    _onFloatingButtonClick() {
+      const agents = this.config.getAgents();
+      if (this.state === 'collapsed') {
+        if (agents.length === 1) {
+          this._openChat(agents[0].id);
+        } else {
+          this._expandSelector();
+        }
+      } else if (this.state === 'expanded') {
+        this._collapse();
+      }
+      // In 'chat' state the button is hidden so this won't fire
+    }
+    async _onAgentSelect(agentId) {
+      await this._openChat(agentId);
+    }
+
+    // ─── State transitions ──────────────────────────────────────────────────────
+
+    _expandSelector() {
+      this.state = 'expanded';
+      this.floatingButton.setActive(true);
+      if (this.agentSelector) this.agentSelector.show();
+    }
+    _collapse() {
+      this.state = 'collapsed';
+      this.floatingButton.setActive(false);
+      if (this.agentSelector) this.agentSelector.hide();
+    }
+    async _openChat(agentId) {
+      this.state = 'chat';
+      this.floatingButton.hide();
+      if (this.agentSelector) this.agentSelector.hide();
+
+      // Hide the window of the previously active agent (if switching)
+      if (this.currentAgentId && this.currentAgentId !== agentId) {
+        const prevWin = this.chatWindows.get(this.currentAgentId);
+        if (prevWin && prevWin.el) prevWin.el.style.display = 'none';
+      }
+
+      // If a window already exists for this agent, just show it (history preserved)
+      if (this.chatWindows.has(agentId)) {
+        const win = this.chatWindows.get(agentId);
+        if (win.el) win.el.style.display = 'flex';
+        this.currentAgentId = agentId;
+        await this.client.startChat(agentId); // re-activates session in ChatManager
+        return;
+      }
+
+      // First open for this agent: start session and create window
+      this.currentAgentId = agentId;
+      await this.client.startChat(agentId);
+      const agent = this.config.getAgent(agentId);
+      const feedbackEnabled = this.config.isFeatureEnabled('feedback');
+      const chatWindow = new ChatWindow({
+        agent,
+        messages: this.client.getMessages(),
+        feedbackEnabled,
+        onSend: async text => {
+          await this.client.sendMessage(text);
+        },
+        onFeedback: (messageId, isPositive) => {
+          this.client.sendFeedback(messageId, isPositive).catch(e => {
+            console.warn('[wxo-sdk] Feedback error:', e);
+          });
+        },
+        onMinimize: () => this._minimizeChat(),
+        onReload: () => this._reloadChat()
+      });
+      chatWindow.render(this.container);
+      this.chatWindows.set(agentId, chatWindow);
+    }
+    _minimizeChat() {
+      // Hide (not destroy) the active window to preserve DOM and message history
+      if (this.currentAgentId) {
+        const win = this.chatWindows.get(this.currentAgentId);
+        if (win && win.el) win.el.style.display = 'none';
+      }
+      this.floatingButton.show();
+      const agents = this.config.getAgents();
+      if (agents.length > 1) {
+        this._expandSelector();
+      } else {
+        this._collapse();
+      }
+    }
+    async _reloadChat() {
+      if (!this.currentAgentId) return;
+      const agentId = this.currentAgentId;
+
+      // Destroy the current window for this agent
+      const win = this.chatWindows.get(agentId);
+      if (win) {
+        win.destroy();
+        this.chatWindows.delete(agentId);
+      }
+
+      // End the session (closes thread, clears messages in ChatManager)
+      await this.client.endChat(agentId).catch(() => {});
+      this.currentAgentId = null;
+
+      // Reopen with a fresh session
+      await this._openChat(agentId);
+    }
+
+    // ─── CSS injection ──────────────────────────────────────────────────────────
+
+    _injectStyles() {
+      if (document.getElementById('wxo-sdk-styles')) return;
+      const primaryColor = this.config.get('theme.primaryColor') || '#0f62fe';
+      const style = document.createElement('style');
+      style.id = 'wxo-sdk-styles';
+      style.textContent = `
+      #wxo-ui-container {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        z-index: 99999;
+        display: flex;
+        flex-direction: column-reverse;
+        align-items: flex-end;
+        gap: 10px;
+        font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      }
+
+      /* Floating button */
+      .wxo-floating-btn {
+        width: 60px;
+        height: 60px;
+        border-radius: 50%;
+        background: ${primaryColor};
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+        transition: transform 0.2s, box-shadow 0.2s;
+        flex-shrink: 0;
+      }
+      .wxo-floating-btn:hover {
+        transform: scale(1.05);
+        box-shadow: 0 6px 16px rgba(0,0,0,0.3);
+      }
+      .wxo-floating-btn--active {
+        background: #0043ce;
+      }
+
+      /* Agent selector rise animation */
+      @keyframes wxo-agent-rise {
+        0% {
+          opacity: 0;
+          transform: translateY(52px) rotate(90deg);
+        }
+        40% {
+          opacity: 1;
+        }
+        100% {
+          opacity: 1;
+          transform: translateY(0) rotate(0deg);
+        }
+      }
+
+      /* Agent selector */
+      .wxo-agent-selector {
+        flex-direction: column;
+        gap: 8px;
+        align-items: flex-end;
+      }
+      .wxo-agent-item {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        background: white;
+        border-radius: 24px;
+        padding: 10px 18px;
+        cursor: pointer;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        white-space: nowrap;
+        transform-origin: right center;
+        animation: wxo-agent-rise 0.45s cubic-bezier(0.34, 1.3, 0.64, 1) both;
+      }
+      .wxo-agent-item:hover {
+        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+      }
+      .wxo-agent-item__label {
+        font-size: 14px;
+        font-weight: 500;
+        color: #161616;
+      }
+
+      /* Chat window */
+      .wxo-chat-window {
+        width: 380px;
+        height: 580px;
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        transition: width 0.3s, height 0.3s;
+      }
+      .wxo-chat-window--expanded {
+        width: 620px;
+        height: 720px;
+      }
+
+      /* Chat header */
+      .wxo-chat-header {
+        background: #ffffff;
+        color: #161616;
+        padding: 14px 16px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-shrink: 0;
+        border-bottom: 1px solid #e0e0e0;
+      }
+      .wxo-chat-header__title {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-weight: 700;
+        font-size: 15px;
+        color: #161616;
+      }
+      .wxo-chat-header__icon {
+        font-size: 20px;
+      }
+      .wxo-chat-header__actions {
+        display: flex;
+        gap: 4px;
+      }
+      .wxo-btn-icon {
+        background: none;
+        border: none;
+        color: #525252;
+        cursor: pointer;
+        font-size: 18px;
+        padding: 4px 6px;
+        border-radius: 4px;
+        line-height: 1;
+        transition: background 0.15s, color 0.15s;
+      }
+      .wxo-btn-icon:hover {
+        background: #f4f4f4;
+        color: #161616;
+      }
+
+      /* Messages area - gradient: white top → #ebf0fa bottom */
+      .wxo-chat-messages {
+        flex: 1;
+        overflow-y: auto;
+        padding: 16px;
+        background: linear-gradient(to bottom, #ffffff 0%, #ffffff 50%, #ebf0fa 100%);
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      /* Individual messages */
+      .wxo-message {
+        max-width: 80%;
+        display: flex;
+        flex-direction: column;
+      }
+      .wxo-message--user {
+        align-self: flex-end;
+        align-items: flex-end;
+      }
+      .wxo-message--agent {
+        align-self: flex-start;
+        align-items: flex-start;
+      }
+
+      /* Sender name + time above bubble */
+      .wxo-message__meta {
+        font-size: 11px;
+        font-weight: 700;
+        color: #161616;
+        margin-bottom: 3px;
+        padding: 0 4px;
+      }
+      .wxo-message--user .wxo-message__meta { text-align: right; }
+      .wxo-message--agent .wxo-message__meta { text-align: left; }
+
+      .wxo-message__content {
+        padding: 10px 14px;
+        border-radius: 12px;
+        font-size: 14px;
+        line-height: 1.5;
+      }
+      .wxo-message--user .wxo-message__content {
+        background: #e0e0e0;
+        color: #161616;
+        border-bottom-right-radius: 4px;
+      }
+      .wxo-message--agent .wxo-message__content {
+        background: transparent;
+        color: #161616;
+        border: none;
+        padding-left: 0;
+      }
+
+      /* Loading dots */
+      @keyframes wxo-blink {
+        0%, 80%, 100% { opacity: 0.2; }
+        40% { opacity: 1; }
+      }
+      .wxo-loading-dots span {
+        animation: wxo-blink 1.4s infinite;
+        display: inline-block;
+        margin: 0 1px;
+        font-size: 20px;
+        line-height: 1;
+      }
+      .wxo-loading-dots span:nth-child(2) { animation-delay: 0.2s; }
+      .wxo-loading-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+      /* Markdown inside agent messages */
+      .wxo-message--agent .wxo-message__content p { margin: 4px 0; }
+      .wxo-message--agent .wxo-message__content h1,
+      .wxo-message--agent .wxo-message__content h2,
+      .wxo-message--agent .wxo-message__content h3 {
+        margin: 6px 0 3px; font-size: 1em; font-weight: 600;
+      }
+      .wxo-message--agent .wxo-message__content table {
+        border-collapse: collapse; width: 100%; margin: 6px 0; font-size: 13px;
+      }
+      .wxo-message--agent .wxo-message__content th,
+      .wxo-message--agent .wxo-message__content td {
+        border: 1px solid #ccc; padding: 4px 8px; text-align: left;
+      }
+      .wxo-message--agent .wxo-message__content th {
+        background: #f0f0f0; font-weight: 600;
+      }
+      .wxo-message--agent .wxo-message__content code {
+        background: #f4f4f4; padding: 1px 4px; border-radius: 3px;
+        font-family: monospace; font-size: 0.9em;
+      }
+      .wxo-message--agent .wxo-message__content pre {
+        background: #f4f4f4; padding: 10px; border-radius: 4px;
+        overflow-x: auto; margin: 4px 0;
+      }
+      .wxo-message--agent .wxo-message__content ul,
+      .wxo-message--agent .wxo-message__content ol {
+        margin: 4px 0; padding-left: 20px;
+      }
+
+      /* Feedback */
+      .wxo-feedback {
+        display: flex;
+        gap: 4px;
+        margin-top: 4px;
+        padding: 0 4px;
+      }
+      .wxo-feedback__btn {
+        background: white;
+        border: 1px solid #e0e0e0;
+        border-radius: 4px;
+        padding: 3px 8px;
+        cursor: pointer;
+        font-size: 13px;
+        transition: background 0.15s;
+      }
+      .wxo-feedback__btn:hover { background: #f0f0f0; }
+      .wxo-feedback__thanks {
+        font-size: 12px;
+        color: #525252;
+      }
+
+      /* Input area */
+      .wxo-chat-input-area {
+        padding: 12px;
+        border-top: 1px solid #e0e0e0;
+        background: white;
+        flex-shrink: 0;
+      }
+      .wxo-input-wrap {
+        position: relative;
+      }
+      .wxo-chat-input {
+        width: 100%;
+        padding: 10px 46px 10px 14px;
+        border: 1px solid #c6c6c6;
+        border-radius: 8px;
+        font-size: 14px;
+        outline: none;
+        font-family: inherit;
+        box-sizing: border-box;
+        resize: none;
+        overflow-y: hidden;
+        min-height: 42px;
+        max-height: 160px;
+        line-height: 1.5;
+        transition: border-color 0.15s;
+      }
+      .wxo-chat-input:focus { border-color: ${primaryColor}; }
+      .wxo-chat-input:disabled { background: #f4f4f4; }
+      .wxo-chat-send {
+        position: absolute;
+        right: 6px;
+        bottom: 6px;
+        width: 30px;
+        height: 30px;
+        background: #c6c6c6;
+        color: #ffffff;
+        border: none;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: default;
+        transition: background 0.15s;
+        flex-shrink: 0;
+      }
+      .wxo-chat-send:not(:disabled) {
+        background: #161616;
+        cursor: pointer;
+      }
+      .wxo-chat-send:not(:disabled):hover { background: #393939; }
+    `;
+      document.head.appendChild(style);
+    }
+    destroy() {
+      this.chatWindows.forEach(win => win.destroy());
+      this.chatWindows.clear();
+      if (this.agentSelector) this.agentSelector.destroy();
+      if (this.floatingButton) this.floatingButton.destroy();
+      if (this.container && this.container.parentNode) {
+        this.container.parentNode.removeChild(this.container);
+      }
+      const styleEl = document.getElementById('wxo-sdk-styles');
+      if (styleEl) styleEl.parentNode.removeChild(styleEl);
+    }
+  }
+
+  // Made with Bob
+
+  /**
+   * wxo-js-sdk - Pure JavaScript SDK for IBM watsonx Orchestrate
+   *
+   * Drop-in replacement for IBM's wxoLoader.js
+   *
+   * Usage:
+   *   <script>
+   *     window.wxOConfiguration = {
+   *       orchestrationID: "...",
+   *       hostURL: "https://us-south.watson-orchestrate.cloud.ibm.com",
+   *       rootElementID: "root",
+   *       agents: [ ... ],   // our enhancement: multiple agents
+   *       debug: false
+   *     };
+   *   </script>
+   *   <script src="wxo-sdk.min.js"></script>
+   *   <script>wxoLoader.init();</script>
+   */
+
+  const client = new WxOClient();
+  let uiManager = null;
+  const wxoLoader = {
+    version: '0.1.0',
+    /**
+     * Initialize the SDK.
+     * Initializes WxOClient and launches the full chat UI automatically.
+     * @returns {Promise<void>}
+     */
+    async init() {
+      try {
+        await client.init();
+        uiManager = new UIManager(client.config, client);
+        uiManager.init();
+        if (window.wxOConfiguration?.debug) {
+          console.log('[wxo-sdk] SDK loaded. Version:', this.version);
+        }
+      } catch (error) {
+        console.error('[wxo-sdk] Failed to initialize SDK:', error);
+        throw error;
+      }
+    },
+    /**
+     * Destroy and cleanup all UI and sessions.
+     */
+    destroy() {
+      if (uiManager) {
+        uiManager.destroy();
+        uiManager = null;
+      }
+      client.disconnect();
+    },
+    /**
+     * Check if SDK is ready.
+     * @returns {boolean}
+     */
+    isReady() {
+      return client.isReady();
+    }
+  };
+
+  // Expose globally for browser <script> tag usage
+  if (typeof window !== 'undefined') {
+    window.wxoLoader = wxoLoader;
+  }
+
+  // Made with Bob
+
+  return wxoLoader;
+
+}));
+//# sourceMappingURL=wxo-sdk.js.map

@@ -1,0 +1,59 @@
+{
+  "name": "wxo-js-sdk",
+  "version": "0.1.0",
+  "description": "Pure JavaScript SDK for IBM watsonx Orchestrate with enhanced features",
+  "type": "module",
+  "main": "dist/wxo-sdk.js",
+  "module": "dist/wxo-sdk.esm.js",
+  "browser": "dist/wxo-sdk.min.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "dev": "rollup -c -w",
+    "build": "rollup -c",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "lint": "eslint src/**/*.js",
+    "lint:fix": "eslint src/**/*.js --fix",
+    "docs": "jsdoc -c jsdoc.json",
+    "serve": "http-server examples -p 8080 -o"
+  },
+  "keywords": [
+    "watsonx",
+    "orchestrate",
+    "ibm",
+    "ai",
+    "chatbot",
+    "sdk",
+    "javascript"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@babel/core": "^7.23.0",
+    "@babel/preset-env": "^7.23.0",
+    "@rollup/plugin-babel": "^6.0.4",
+    "@rollup/plugin-commonjs": "^25.0.7",
+    "@rollup/plugin-node-resolve": "^15.2.3",
+    "@rollup/plugin-terser": "^0.4.4",
+    "eslint": "^8.52.0",
+    "http-server": "^14.1.1",
+    "jest": "^29.7.0",
+    "jest-environment-jsdom": "^29.7.0",
+    "jsdoc": "^4.0.2",
+    "rollup": "^4.1.4"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/wxo-js-sdk.git"
+  },
+  "bugs": {
+    "url": "https://github.com/yourusername/wxo-js-sdk/issues"
+  },
+  "homepage": "https://github.com/yourusername/wxo-js-sdk#readme"
+}

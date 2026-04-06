@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>wxo-js-sdk - Basic Example</title>
+  <style>
+    body {
+      font-family: 'IBM Plex Sans', -apple-system, sans-serif;
+      margin: 40px;
+      background: #f4f4f4;
+      color: #161616;
+    }
+    h1 { color: #0f62fe; }
+  </style>
+</head>
+<body>
+  <h1>wxo-js-sdk テストページ</h1>
+  <p>右下のチャットアイコンをクリックして会話を開始してください。</p>
+
+  <div id="root"></div>
+
+  <!-- Optional: Markdown renderer for agent responses -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+  <!-- SDK configuration -->
+  <script>
+    window.wxOConfiguration = {
+      orchestrationID: 'YOUR_ORCHESTRATION_ID',
+      hostURL: 'https://us-south.watson-orchestrate.cloud.ibm.com',
+      region: 'us-south',
+      deploymentPlatform: 'ibmcloud',
+      crn: 'YOUR_CRN',
+      rootElementID: 'root',
+      agents: [
+        {
+          id: 'agent1',
+          name: 'エージェント1',
+          agentId: 'YOUR_AGENT_ID',
+          agentEnvironmentId: 'YOUR_AGENT_ENVIRONMENT_ID'
+        }
+      ],
+      features: {
+        feedback: true,
+        multiAgent: true
+      },
+      debug: false
+    };
+  </script>
+
+  <!-- Load SDK from GitHub Pages CDN -->
+  <!-- <script src="https://YOUR_ORG.github.io/wxo-js-sdk/dist/wxo-sdk.min.js"></script> -->
+
+  <!-- Or load locally during development -->
+  <script src="../dist/wxo-sdk.min.js"></script>
+
+  <!-- Initialize SDK -->
+  <script>
+    wxoLoader.init().catch(console.error);
+  </script>
+</body>
+</html>

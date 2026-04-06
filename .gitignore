@@ -1,0 +1,55 @@
+# Dependencies
+node_modules/
+package-lock.json
+yarn.lock
+
+# Build outputs (dist/ is committed for GitHub Pages CDN hosting)
+build/
+*.map
+
+# Example files with real credentials - use *.template.html instead
+examples/basic-example.html
+
+# Test coverage
+coverage/
+.nyc_output/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Claude Code settings
+.claude/
+
+# Analysis files (IBM source code, internal use only)
+analysis/
+
+# Duplicate build outputs in examples/
+examples/dist/
+
+# Documentation build
+docs/generated/
