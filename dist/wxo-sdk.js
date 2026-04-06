@@ -1183,7 +1183,7 @@
       this.sendBtn.addEventListener('click', () => this._handleSend());
       // Enter to send, Shift+Enter for newline
       this.inputEl.addEventListener('keydown', e => {
-        if (e.key === 'Enter' && !e.shiftKey) {
+        if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
           e.preventDefault();
           this._handleSend();
         }
