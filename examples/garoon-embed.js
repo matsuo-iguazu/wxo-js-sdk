@@ -18,6 +18,8 @@
       feedback: true,
       multiAgent: true
     },
+    feedbackWebhookUrl: 'YOUR_CODE_ENGINE_URL',  // フィードバック保存先 (Code Engine)
+    feedbackUserInfo: garoon.base.user.getLoginUser(),  // Garoonユーザー情報をペイロードに含める
     debug: false
   };
 

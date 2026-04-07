@@ -34,6 +34,19 @@ class Config {
         voiceInput: false
       },
       feedbackWebhookUrl: null,  // POST destination for feedback data (optional)
+      feedbackUserInfo: null,    // User info object to spread into feedback payload (optional)
+      feedbackOptions: {
+        positive: {
+          showDetails: true,
+          categories: ['役立った', '正確', 'わかりやすい', 'その他'],
+          disclaimer: '',
+        },
+        negative: {
+          showDetails: true,
+          categories: ['正しくない', '未完了', '長すぎます', '関係ない', 'その他'],
+          disclaimer: 'フィードバックに機密情報や個人を特定できる情報を含めないようにしてください',
+        },
+      },
       debug: false
     };
   }
@@ -190,6 +203,22 @@ class Config {
    */
   getFeedbackWebhookUrl() {
     return this.config?.feedbackWebhookUrl || null;
+  }
+
+  /**
+   * Get feedback user info (spread into payload)
+   * @returns {Object|null}
+   */
+  getFeedbackUserInfo() {
+    return this.config?.feedbackUserInfo || null;
+  }
+
+  /**
+   * Get feedback options (categories, showDetails, disclaimer per positive/negative)
+   * @returns {Object}
+   */
+  getFeedbackOptions() {
+    return this.config?.feedbackOptions || null;
   }
 
   /**

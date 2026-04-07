@@ -122,16 +122,18 @@ class UIManager {
 
     const agent = this.config.getAgent(agentId);
     const feedbackEnabled = this.config.isFeatureEnabled('feedback');
+    const feedbackOptions = this.config.getFeedbackOptions();
 
     const chatWindow = new ChatWindow({
       agent,
       messages: this.client.getMessages(),
       feedbackEnabled,
+      feedbackOptions,
       onSend: async (text) => {
         await this.client.sendMessage(text);
       },
-      onFeedback: (messageId, isPositive, comment, messageText) => {
-        this.client.sendFeedback(messageId, isPositive, comment, messageText).catch((e) => {
+      onFeedback: (messageId, isPositive, categories, text) => {
+        this.client.sendFeedback(messageId, isPositive, categories, text).catch((e) => {
           console.warn('[wxo-sdk] Feedback error:', e);
         });
       },
@@ -424,17 +426,13 @@ class UIManager {
         margin: 4px 0; padding-left: 20px;
       }
 
-      /* Feedback */
+      /* Feedback - initial buttons */
       .wxo-feedback {
         display: flex;
-        flex-direction: column;
+        flex-direction: row;
         gap: 4px;
         margin-top: 4px;
         padding: 0 4px;
-        max-width: 260px;
-      }
-      .wxo-feedback > .wxo-feedback__btn {
-        align-self: flex-start;
       }
       .wxo-feedback__btn {
         background: white;
@@ -446,50 +444,101 @@ class UIManager {
         transition: background 0.15s;
       }
       .wxo-feedback__btn:hover { background: #f0f0f0; }
-      .wxo-feedback__selected {
-        font-size: 16px;
-        margin-bottom: 4px;
-      }
-      .wxo-feedback__comment-wrap {
+
+      /* Feedback - detail panel */
+      .wxo-feedback__panel {
         display: flex;
         flex-direction: column;
+        gap: 10px;
+        border: 1px solid #e0e0e0;
+        border-radius: 8px;
+        padding: 14px;
+        max-width: 280px;
+        background: white;
+      }
+      .wxo-feedback__panel-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .wxo-feedback__selected { font-size: 16px; }
+      .wxo-feedback__panel-title {
+        font-size: 13px;
+        font-weight: 700;
+        color: #161616;
+      }
+      .wxo-feedback__panel-subtitle {
+        font-size: 12px;
+        color: #525252;
+        margin-top: -4px;
+      }
+      .wxo-feedback__pills {
+        display: flex;
+        flex-wrap: wrap;
         gap: 6px;
-        width: 100%;
+      }
+      .wxo-feedback__pill {
+        background: white;
+        border: 1px solid #c6c6c6;
+        border-radius: 16px;
+        padding: 4px 12px;
+        font-size: 12px;
+        font-family: inherit;
+        cursor: pointer;
+        transition: background 0.15s, border-color 0.15s, color 0.15s;
+      }
+      .wxo-feedback__pill:hover { background: #f4f4f4; }
+      .wxo-feedback__pill--selected {
+        background: #edf4ff;
+        border-color: ${primaryColor};
+        color: ${primaryColor};
       }
       .wxo-feedback__comment {
         width: 100%;
         border: 1px solid #c6c6c6;
         border-radius: 6px;
-        padding: 6px 8px;
-        font-size: 13px;
+        padding: 8px 10px;
+        font-size: 12px;
         font-family: inherit;
         resize: none;
         box-sizing: border-box;
         outline: none;
       }
       .wxo-feedback__comment:focus { border-color: ${primaryColor}; }
-      .wxo-feedback__comment-actions {
-        display: flex;
-        align-items: center;
-        gap: 10px;
+      .wxo-feedback__disclaimer {
+        font-size: 11px;
+        color: #525252;
+        line-height: 1.4;
       }
+      .wxo-feedback__panel-actions {
+        display: flex;
+        gap: 8px;
+      }
+      .wxo-feedback__cancel {
+        flex: 1;
+        background: white;
+        border: 1px solid #c6c6c6;
+        border-radius: 4px;
+        padding: 7px 12px;
+        font-size: 12px;
+        font-family: inherit;
+        cursor: pointer;
+        transition: background 0.15s;
+      }
+      .wxo-feedback__cancel:hover { background: #f4f4f4; }
       .wxo-feedback__submit {
-        background: #161616;
+        flex: 1;
+        background: ${primaryColor};
         color: white;
         border: none;
         border-radius: 4px;
-        padding: 4px 12px;
+        padding: 7px 12px;
         font-size: 12px;
+        font-family: inherit;
         cursor: pointer;
+        transition: background 0.15s;
       }
-      .wxo-feedback__submit:hover { background: #393939; }
-      .wxo-feedback__skip {
-        font-size: 12px;
-        color: #525252;
-        cursor: pointer;
-        text-decoration: underline;
-      }
-      .wxo-feedback__skip:hover { color: #161616; }
+      .wxo-feedback__submit:hover { background: #0043ce; }
       .wxo-feedback__thanks {
         font-size: 12px;
         color: #525252;

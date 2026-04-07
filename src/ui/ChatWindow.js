@@ -3,7 +3,7 @@
  * Renders the full chat interface: header, messages, input, feedback buttons
  */
 class ChatWindow {
-  constructor({ agent, messages = [], onSend, onFeedback, onMinimize, onReload, feedbackEnabled = true }) {
+  constructor({ agent, messages = [], onSend, onFeedback, onMinimize, onReload, feedbackEnabled = true, feedbackOptions = null }) {
     this.agent = agent;
     this.messages = [...messages];
     this.onSend = onSend;
@@ -11,6 +11,7 @@ class ChatWindow {
     this.onMinimize = onMinimize;
     this.onReload = onReload;
     this.feedbackEnabled = feedbackEnabled;
+    this.feedbackOptions = feedbackOptions;
     this.el = null;
     this.messagesEl = null;
     this.inputEl = null;
@@ -159,19 +160,7 @@ class ChatWindow {
     if (!isLoading && message.sender === 'agent' && this.feedbackEnabled && message.id && this.onFeedback) {
       const fbEl = document.createElement('div');
       fbEl.className = 'wxo-feedback';
-
-      const thumbUp = document.createElement('button');
-      thumbUp.className = 'wxo-feedback__btn';
-      thumbUp.textContent = '👍';
-      thumbUp.addEventListener('click', () => this._onRatingClick(message.id, true, fbEl, message.text));
-
-      const thumbDown = document.createElement('button');
-      thumbDown.className = 'wxo-feedback__btn';
-      thumbDown.textContent = '👎';
-      thumbDown.addEventListener('click', () => this._onRatingClick(message.id, false, fbEl, message.text));
-
-      fbEl.appendChild(thumbUp);
-      fbEl.appendChild(thumbDown);
+      this._renderFeedbackButtons(message.id, fbEl, message.text);
       div.appendChild(fbEl);
     }
 
@@ -195,30 +184,84 @@ class ChatWindow {
     this.loadingEl = null;
   }
 
+  _renderFeedbackButtons(messageId, fbEl, messageText) {
+    fbEl.innerHTML = '';
+    const thumbUp = document.createElement('button');
+    thumbUp.className = 'wxo-feedback__btn';
+    thumbUp.textContent = '👍';
+    thumbUp.addEventListener('click', () => this._onRatingClick(messageId, true, fbEl, messageText));
+
+    const thumbDown = document.createElement('button');
+    thumbDown.className = 'wxo-feedback__btn';
+    thumbDown.textContent = '👎';
+    thumbDown.addEventListener('click', () => this._onRatingClick(messageId, false, fbEl, messageText));
+
+    fbEl.appendChild(thumbUp);
+    fbEl.appendChild(thumbDown);
+  }
+
   _onRatingClick(messageId, isPositive, fbEl, messageText) {
+    const type = isPositive ? 'positive' : 'negative';
+    const opts = this.feedbackOptions?.[type];
+
+    // If showDetails is false, submit immediately with no details
+    if (!opts?.showDetails) {
+      this._submitFeedback(messageId, isPositive, [], '', fbEl);
+      return;
+    }
+
     const rating = isPositive ? '👍' : '👎';
+    const categories = opts.categories || [];
+    const disclaimer = opts.disclaimer || '';
+
+    const pillsHtml = categories
+      .map((cat, i) => `<button class="wxo-feedback__pill" data-index="${i}">${this._escapeHtml(cat)}</button>`)
+      .join('');
+
     fbEl.innerHTML = `
-      <div class="wxo-feedback__selected">${rating}</div>
-      <div class="wxo-feedback__comment-wrap">
-        <textarea class="wxo-feedback__comment" placeholder="コメントがあれば入力してください（任意）" rows="2"></textarea>
-        <div class="wxo-feedback__comment-actions">
+      <div class="wxo-feedback__panel">
+        <div class="wxo-feedback__panel-header">
+          <span class="wxo-feedback__selected">${rating}</span>
+          <span class="wxo-feedback__panel-title">追加フィードバック</span>
+        </div>
+        <div class="wxo-feedback__panel-subtitle">この評価をした理由は何ですか？</div>
+        <div class="wxo-feedback__pills">${pillsHtml}</div>
+        <textarea class="wxo-feedback__comment" placeholder="(オプション)他にご意見やご提案があればお知らせください" rows="2"></textarea>
+        ${disclaimer ? `<div class="wxo-feedback__disclaimer">${this._escapeHtml(disclaimer)}</div>` : ''}
+        <div class="wxo-feedback__panel-actions">
+          <button class="wxo-feedback__cancel">キャンセル</button>
           <button class="wxo-feedback__submit">送信</button>
-          <span class="wxo-feedback__skip">スキップ</span>
         </div>
       </div>
     `;
+
+    const selectedCategories = new Set();
+    fbEl.querySelectorAll('.wxo-feedback__pill').forEach((pill, i) => {
+      pill.addEventListener('click', () => {
+        const cat = categories[i];
+        if (selectedCategories.has(cat)) {
+          selectedCategories.delete(cat);
+          pill.classList.remove('wxo-feedback__pill--selected');
+        } else {
+          selectedCategories.add(cat);
+          pill.classList.add('wxo-feedback__pill--selected');
+        }
+      });
+    });
+
     const textarea = fbEl.querySelector('.wxo-feedback__comment');
     fbEl.querySelector('.wxo-feedback__submit').addEventListener('click', () => {
-      this._submitFeedback(messageId, isPositive, textarea.value.trim(), fbEl, messageText);
+      this._submitFeedback(messageId, isPositive, [...selectedCategories], textarea.value.trim(), fbEl);
     });
-    fbEl.querySelector('.wxo-feedback__skip').addEventListener('click', () => {
-      this._submitFeedback(messageId, isPositive, '', fbEl, messageText);
+    fbEl.querySelector('.wxo-feedback__cancel').addEventListener('click', () => {
+      this._renderFeedbackButtons(messageId, fbEl, messageText);
     });
+
     this._scrollToBottom();
   }
 
-  _submitFeedback(messageId, isPositive, comment, fbEl, messageText) {
-    this.onFeedback(messageId, isPositive, comment, messageText);
+  _submitFeedback(messageId, isPositive, categories, text, fbEl) {
+    this.onFeedback(messageId, isPositive, categories, text);
     fbEl.innerHTML = `<span class="wxo-feedback__thanks">${isPositive ? '👍' : '👎'} フィードバックありがとうございます</span>`;
   }
 

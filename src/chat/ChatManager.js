@@ -89,6 +89,7 @@ class ChatManager {
       timestamp: Date.now()
     };
     session.messages.push(userMessage);
+    session.lastUserMessage = text; // track for feedback payload
     // Note: user messages are returned to the caller for display.
     // onMessage handlers are reserved for agent responses only.
 
@@ -285,26 +286,38 @@ class ChatManager {
 
   /**
    * Send feedback for a message
+   * Payload aligned with existing Code Engine / DB2 schema
    * @param {string} messageId
-   * @param {string} feedback - 'positive' or 'negative'
-   * @param {string} comment
+   * @param {boolean} isPositive
+   * @param {string[]} categories - selected category labels
+   * @param {string} text - free text comment
    */
-  async sendFeedback(messageId, feedback, comment = '', messageText = '') {
+  async sendFeedback(messageId, isPositive, categories = [], text = '') {
     const webhookUrl = this.config.getFeedbackWebhookUrl();
     const session = this.sessions.get(this.currentAgentId);
     const agentConfig = this.config.getAgent(this.currentAgentId);
+    const feedbackUserInfo = this.config.getFeedbackUserInfo() || {};
+
+    // Find question/answer pair by locating the agent message and the user message before it
+    const messages = session?.messages || [];
+    const agentMsgIndex = messages.findIndex(m => m.id === messageId);
+    const precedingMsg = agentMsgIndex > 0 ? messages[agentMsgIndex - 1] : null;
+    const question = precedingMsg?.sender === 'user' ? precedingMsg.text : (session?.lastUserMessage || '');
+    const answer = agentMsgIndex >= 0 ? (messages[agentMsgIndex].text || '') : '';
 
     const payload = {
-      timestamp: new Date().toISOString(),
-      rating: feedback,
-      comment,
-      message_id: messageId,
-      message_text: messageText,
-      thread_id: session?.threadId || null,
-      agent_id: agentConfig?.agentId || this.currentAgentId,
-      agent_name: agentConfig?.name || this.currentAgentId,
-      orchestration_id: this.config.get('orchestrationID'),
+      ...feedbackUserInfo,
+      question,
+      answer,
+      isPositive: isPositive ? 1 : 0,
+      categories: Array.isArray(categories) ? categories.join(', ') : '',
+      text,
+      agentId: agentConfig?.agentId || this.currentAgentId,
     };
+
+    if (this.config.isDebug()) {
+      console.log('[wxo-sdk] Feedback payload:', payload);
+    }
 
     if (webhookUrl) {
       await fetch(webhookUrl, {
@@ -312,8 +325,6 @@ class ChatManager {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-    } else if (this.config.isDebug()) {
-      console.log('[wxo-sdk] Feedback (no feedbackWebhookUrl configured):', payload);
     }
   }
 
