@@ -33,6 +33,7 @@ class Config {
         fileUpload: false,
         voiceInput: false
       },
+      feedbackWebhookUrl: null,  // POST destination for feedback data (optional)
       debug: false
     };
   }
@@ -181,6 +182,14 @@ class Config {
    */
   isFeatureEnabled(featureName) {
     return this.config?.features?.[featureName] === true;
+  }
+
+  /**
+   * Get the feedback webhook URL (if configured)
+   * @returns {string|null}
+   */
+  getFeedbackWebhookUrl() {
+    return this.config?.feedbackWebhookUrl || null;
   }
 
   /**

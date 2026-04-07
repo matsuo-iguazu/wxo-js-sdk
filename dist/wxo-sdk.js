@@ -39,6 +39,8 @@
           fileUpload: false,
           voiceInput: false
         },
+        feedbackWebhookUrl: null,
+        // POST destination for feedback data (optional)
         debug: false
       };
     }
@@ -183,6 +185,14 @@
      */
     isFeatureEnabled(featureName) {
       return this.config?.features?.[featureName] === true;
+    }
+
+    /**
+     * Get the feedback webhook URL (if configured)
+     * @returns {string|null}
+     */
+    getFeedbackWebhookUrl() {
+      return this.config?.feedbackWebhookUrl || null;
     }
 
     /**
@@ -677,20 +687,32 @@
      * @param {string} feedback - 'positive' or 'negative'
      * @param {string} comment
      */
-    async sendFeedback(messageId, feedback, comment = '') {
-      if (!this.currentAgentId) {
-        throw new Error('No active agent');
-      }
+    async sendFeedback(messageId, feedback, comment = '', messageText = '') {
+      const webhookUrl = this.config.getFeedbackWebhookUrl();
       const session = this.sessions.get(this.currentAgentId);
-      if (!session || !session.threadId) {
-        throw new Error('No active thread');
-      }
-      await this.httpClient.post('/mfe_home_archer/api/v1/feedback', {
-        thread_id: session.threadId,
+      const agentConfig = this.config.getAgent(this.currentAgentId);
+      const payload = {
+        timestamp: new Date().toISOString(),
+        rating: feedback,
+        comment,
         message_id: messageId,
-        feedback,
-        comment
-      });
+        message_text: messageText,
+        thread_id: session?.threadId || null,
+        agent_id: agentConfig?.agentId || this.currentAgentId,
+        agent_name: agentConfig?.name || this.currentAgentId,
+        orchestration_id: this.config.get('orchestrationID')
+      };
+      if (webhookUrl) {
+        await fetch(webhookUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(payload)
+        });
+      } else if (this.config.isDebug()) {
+        console.log('[wxo-sdk] Feedback (no feedbackWebhookUrl configured):', payload);
+      }
     }
 
     /**
@@ -886,10 +908,10 @@
      * @param {boolean} isPositive
      * @param {string} comment
      */
-    async sendFeedback(messageId, isPositive, comment = '') {
+    async sendFeedback(messageId, isPositive, comment = '', messageText = '') {
       this._ensureInitialized();
       const feedback = isPositive ? 'positive' : 'negative';
-      return await this.chatManager.sendFeedback(messageId, feedback, comment);
+      return await this.chatManager.sendFeedback(messageId, feedback, comment, messageText);
     }
 
     /**
@@ -1279,11 +1301,11 @@
         const thumbUp = document.createElement('button');
         thumbUp.className = 'wxo-feedback__btn';
         thumbUp.textContent = '👍';
-        thumbUp.addEventListener('click', () => this._sendFeedback(message.id, true, fbEl));
+        thumbUp.addEventListener('click', () => this._onRatingClick(message.id, true, fbEl, message.text));
         const thumbDown = document.createElement('button');
         thumbDown.className = 'wxo-feedback__btn';
         thumbDown.textContent = '👎';
-        thumbDown.addEventListener('click', () => this._sendFeedback(message.id, false, fbEl));
+        thumbDown.addEventListener('click', () => this._onRatingClick(message.id, false, fbEl, message.text));
         fbEl.appendChild(thumbUp);
         fbEl.appendChild(thumbDown);
         div.appendChild(fbEl);
@@ -1305,8 +1327,29 @@
       }
       this.loadingEl = null;
     }
-    _sendFeedback(messageId, isPositive, fbEl) {
-      this.onFeedback(messageId, isPositive);
+    _onRatingClick(messageId, isPositive, fbEl, messageText) {
+      const rating = isPositive ? '👍' : '👎';
+      fbEl.innerHTML = `
+      <div class="wxo-feedback__selected">${rating}</div>
+      <div class="wxo-feedback__comment-wrap">
+        <textarea class="wxo-feedback__comment" placeholder="コメントがあれば入力してください（任意）" rows="2"></textarea>
+        <div class="wxo-feedback__comment-actions">
+          <button class="wxo-feedback__submit">送信</button>
+          <span class="wxo-feedback__skip">スキップ</span>
+        </div>
+      </div>
+    `;
+      const textarea = fbEl.querySelector('.wxo-feedback__comment');
+      fbEl.querySelector('.wxo-feedback__submit').addEventListener('click', () => {
+        this._submitFeedback(messageId, isPositive, textarea.value.trim(), fbEl, messageText);
+      });
+      fbEl.querySelector('.wxo-feedback__skip').addEventListener('click', () => {
+        this._submitFeedback(messageId, isPositive, '', fbEl, messageText);
+      });
+      this._scrollToBottom();
+    }
+    _submitFeedback(messageId, isPositive, comment, fbEl, messageText) {
+      this.onFeedback(messageId, isPositive, comment, messageText);
       fbEl.innerHTML = `<span class="wxo-feedback__thanks">${isPositive ? '👍' : '👎'} フィードバックありがとうございます</span>`;
     }
     _toggleResize() {
@@ -1453,8 +1496,8 @@
         onSend: async text => {
           await this.client.sendMessage(text);
         },
-        onFeedback: (messageId, isPositive) => {
-          this.client.sendFeedback(messageId, isPositive).catch(e => {
+        onFeedback: (messageId, isPositive, comment, messageText) => {
+          this.client.sendFeedback(messageId, isPositive, comment, messageText).catch(e => {
             console.warn('[wxo-sdk] Feedback error:', e);
           });
         },
@@ -1744,9 +1787,14 @@
       /* Feedback */
       .wxo-feedback {
         display: flex;
+        flex-direction: column;
         gap: 4px;
         margin-top: 4px;
         padding: 0 4px;
+        max-width: 260px;
+      }
+      .wxo-feedback > .wxo-feedback__btn {
+        align-self: flex-start;
       }
       .wxo-feedback__btn {
         background: white;
@@ -1758,6 +1806,50 @@
         transition: background 0.15s;
       }
       .wxo-feedback__btn:hover { background: #f0f0f0; }
+      .wxo-feedback__selected {
+        font-size: 16px;
+        margin-bottom: 4px;
+      }
+      .wxo-feedback__comment-wrap {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        width: 100%;
+      }
+      .wxo-feedback__comment {
+        width: 100%;
+        border: 1px solid #c6c6c6;
+        border-radius: 6px;
+        padding: 6px 8px;
+        font-size: 13px;
+        font-family: inherit;
+        resize: none;
+        box-sizing: border-box;
+        outline: none;
+      }
+      .wxo-feedback__comment:focus { border-color: ${primaryColor}; }
+      .wxo-feedback__comment-actions {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .wxo-feedback__submit {
+        background: #161616;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        padding: 4px 12px;
+        font-size: 12px;
+        cursor: pointer;
+      }
+      .wxo-feedback__submit:hover { background: #393939; }
+      .wxo-feedback__skip {
+        font-size: 12px;
+        color: #525252;
+        cursor: pointer;
+        text-decoration: underline;
+      }
+      .wxo-feedback__skip:hover { color: #161616; }
       .wxo-feedback__thanks {
         font-size: 12px;
         color: #525252;

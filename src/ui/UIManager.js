@@ -130,8 +130,8 @@ class UIManager {
       onSend: async (text) => {
         await this.client.sendMessage(text);
       },
-      onFeedback: (messageId, isPositive) => {
-        this.client.sendFeedback(messageId, isPositive).catch((e) => {
+      onFeedback: (messageId, isPositive, comment, messageText) => {
+        this.client.sendFeedback(messageId, isPositive, comment, messageText).catch((e) => {
           console.warn('[wxo-sdk] Feedback error:', e);
         });
       },
@@ -427,9 +427,14 @@ class UIManager {
       /* Feedback */
       .wxo-feedback {
         display: flex;
+        flex-direction: column;
         gap: 4px;
         margin-top: 4px;
         padding: 0 4px;
+        max-width: 260px;
+      }
+      .wxo-feedback > .wxo-feedback__btn {
+        align-self: flex-start;
       }
       .wxo-feedback__btn {
         background: white;
@@ -441,6 +446,50 @@ class UIManager {
         transition: background 0.15s;
       }
       .wxo-feedback__btn:hover { background: #f0f0f0; }
+      .wxo-feedback__selected {
+        font-size: 16px;
+        margin-bottom: 4px;
+      }
+      .wxo-feedback__comment-wrap {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        width: 100%;
+      }
+      .wxo-feedback__comment {
+        width: 100%;
+        border: 1px solid #c6c6c6;
+        border-radius: 6px;
+        padding: 6px 8px;
+        font-size: 13px;
+        font-family: inherit;
+        resize: none;
+        box-sizing: border-box;
+        outline: none;
+      }
+      .wxo-feedback__comment:focus { border-color: ${primaryColor}; }
+      .wxo-feedback__comment-actions {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .wxo-feedback__submit {
+        background: #161616;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        padding: 4px 12px;
+        font-size: 12px;
+        cursor: pointer;
+      }
+      .wxo-feedback__submit:hover { background: #393939; }
+      .wxo-feedback__skip {
+        font-size: 12px;
+        color: #525252;
+        cursor: pointer;
+        text-decoration: underline;
+      }
+      .wxo-feedback__skip:hover { color: #161616; }
       .wxo-feedback__thanks {
         font-size: 12px;
         color: #525252;

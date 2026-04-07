@@ -83,10 +83,10 @@ class WxOClient {
    * @param {boolean} isPositive
    * @param {string} comment
    */
-  async sendFeedback(messageId, isPositive, comment = '') {
+  async sendFeedback(messageId, isPositive, comment = '', messageText = '') {
     this._ensureInitialized();
     const feedback = isPositive ? 'positive' : 'negative';
-    return await this.chatManager.sendFeedback(messageId, feedback, comment);
+    return await this.chatManager.sendFeedback(messageId, feedback, comment, messageText);
   }
 
   /**

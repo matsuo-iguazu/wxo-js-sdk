@@ -163,12 +163,12 @@ class ChatWindow {
       const thumbUp = document.createElement('button');
       thumbUp.className = 'wxo-feedback__btn';
       thumbUp.textContent = '👍';
-      thumbUp.addEventListener('click', () => this._sendFeedback(message.id, true, fbEl));
+      thumbUp.addEventListener('click', () => this._onRatingClick(message.id, true, fbEl, message.text));
 
       const thumbDown = document.createElement('button');
       thumbDown.className = 'wxo-feedback__btn';
       thumbDown.textContent = '👎';
-      thumbDown.addEventListener('click', () => this._sendFeedback(message.id, false, fbEl));
+      thumbDown.addEventListener('click', () => this._onRatingClick(message.id, false, fbEl, message.text));
 
       fbEl.appendChild(thumbUp);
       fbEl.appendChild(thumbDown);
@@ -195,8 +195,30 @@ class ChatWindow {
     this.loadingEl = null;
   }
 
-  _sendFeedback(messageId, isPositive, fbEl) {
-    this.onFeedback(messageId, isPositive);
+  _onRatingClick(messageId, isPositive, fbEl, messageText) {
+    const rating = isPositive ? '👍' : '👎';
+    fbEl.innerHTML = `
+      <div class="wxo-feedback__selected">${rating}</div>
+      <div class="wxo-feedback__comment-wrap">
+        <textarea class="wxo-feedback__comment" placeholder="コメントがあれば入力してください（任意）" rows="2"></textarea>
+        <div class="wxo-feedback__comment-actions">
+          <button class="wxo-feedback__submit">送信</button>
+          <span class="wxo-feedback__skip">スキップ</span>
+        </div>
+      </div>
+    `;
+    const textarea = fbEl.querySelector('.wxo-feedback__comment');
+    fbEl.querySelector('.wxo-feedback__submit').addEventListener('click', () => {
+      this._submitFeedback(messageId, isPositive, textarea.value.trim(), fbEl, messageText);
+    });
+    fbEl.querySelector('.wxo-feedback__skip').addEventListener('click', () => {
+      this._submitFeedback(messageId, isPositive, '', fbEl, messageText);
+    });
+    this._scrollToBottom();
+  }
+
+  _submitFeedback(messageId, isPositive, comment, fbEl, messageText) {
+    this.onFeedback(messageId, isPositive, comment, messageText);
     fbEl.innerHTML = `<span class="wxo-feedback__thanks">${isPositive ? '👍' : '👎'} フィードバックありがとうございます</span>`;
   }
 

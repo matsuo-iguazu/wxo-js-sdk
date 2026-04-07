@@ -289,21 +289,32 @@ class ChatManager {
    * @param {string} feedback - 'positive' or 'negative'
    * @param {string} comment
    */
-  async sendFeedback(messageId, feedback, comment = '') {
-    if (!this.currentAgentId) {
-      throw new Error('No active agent');
-    }
+  async sendFeedback(messageId, feedback, comment = '', messageText = '') {
+    const webhookUrl = this.config.getFeedbackWebhookUrl();
     const session = this.sessions.get(this.currentAgentId);
-    if (!session || !session.threadId) {
-      throw new Error('No active thread');
-    }
+    const agentConfig = this.config.getAgent(this.currentAgentId);
 
-    await this.httpClient.post('/mfe_home_archer/api/v1/feedback', {
-      thread_id: session.threadId,
+    const payload = {
+      timestamp: new Date().toISOString(),
+      rating: feedback,
+      comment,
       message_id: messageId,
-      feedback,
-      comment
-    });
+      message_text: messageText,
+      thread_id: session?.threadId || null,
+      agent_id: agentConfig?.agentId || this.currentAgentId,
+      agent_name: agentConfig?.name || this.currentAgentId,
+      orchestration_id: this.config.get('orchestrationID'),
+    };
+
+    if (webhookUrl) {
+      await fetch(webhookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+    } else if (this.config.isDebug()) {
+      console.log('[wxo-sdk] Feedback (no feedbackWebhookUrl configured):', payload);
+    }
   }
 
   /**
