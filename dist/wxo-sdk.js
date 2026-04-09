@@ -2248,8 +2248,10 @@
         transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
         display: flex;
         justify-content: space-between;
-        align-items: flex-end;
+        align-items: flex-start;
         gap: 8px;
+        min-height: 72px;
+        overflow: hidden;
       }
       .wxo-welcome__prompt:hover {
         background: #f4f4f4;
