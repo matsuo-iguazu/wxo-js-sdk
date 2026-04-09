@@ -18,6 +18,7 @@ class ChatWindow {
     this.sendBtn = null;
     this.loadingEl = null;
     this.isExpanded = false;
+    this.welcomeEl = null;
   }
 
   render(container) {
@@ -26,12 +27,14 @@ class ChatWindow {
 
     this.el.innerHTML = `
       <div class="wxo-chat-header">
-        <div class="wxo-chat-header__title">
-          <span class="wxo-chat-header__icon">${this.agent.icon || '💬'}</span>
-          <span class="wxo-chat-header__name">${this._escapeHtml(this.agent.name)}</span>
+        <div class="wxo-chat-header__left">
+          <button class="wxo-btn-icon wxo-btn-reload" aria-label="Reload" title="チャットのリセット">↺</button>
+          <div class="wxo-chat-header__title">
+            <span class="wxo-chat-header__icon">${this.agent.icon || '💬'}</span>
+            <span class="wxo-chat-header__name">${this._escapeHtml(this.agent.name)}</span>
+          </div>
         </div>
         <div class="wxo-chat-header__actions">
-          <button class="wxo-btn-icon wxo-btn-reload" aria-label="Reload" title="会話をリセット">↺</button>
           <button class="wxo-btn-icon wxo-btn-resize" aria-label="Resize" title="サイズ変更">⤢</button>
           <button class="wxo-btn-icon wxo-btn-minimize" aria-label="Minimize" title="最小化">−</button>
         </div>
@@ -40,7 +43,7 @@ class ChatWindow {
       <div class="wxo-chat-input-area">
         <div class="wxo-input-wrap">
           <textarea class="wxo-chat-input" rows="1" placeholder="何かを入力してください..."></textarea>
-          <button class="wxo-chat-send" aria-label="送信">
+          <button class="wxo-chat-send" aria-label="クリックしてメッセージを送信" title="クリックしてメッセージを送信">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" xmlns="http://www.w3.org/2000/svg">
               <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/>
             </svg>
@@ -53,8 +56,12 @@ class ChatWindow {
     this.inputEl = this.el.querySelector('.wxo-chat-input');
     this.sendBtn = this.el.querySelector('.wxo-chat-send');
 
-    // Re-render existing messages
-    this.messages.forEach(msg => this._appendMessageEl(msg));
+    // Render existing messages or welcome screen
+    if (this.messages.length > 0) {
+      this.messages.forEach(msg => this._appendMessageEl(msg));
+    } else {
+      this._renderWelcomeScreen();
+    }
 
     // Event listeners
     this.el.querySelector('.wxo-btn-minimize').addEventListener('click', () => this.onMinimize());
@@ -82,6 +89,7 @@ class ChatWindow {
 
   addMessage(message) {
     this._hideLoading();
+    this._hideWelcomeScreen();
     this.messages.push(message);
     this._appendMessageEl(message);
     this._scrollToBottom();
@@ -118,7 +126,13 @@ class ChatWindow {
 
   _setInputDisabled(disabled) {
     if (this.inputEl) this.inputEl.disabled = disabled;
-    if (this.sendBtn) this.sendBtn.disabled = disabled;
+    if (this.sendBtn) {
+      if (disabled) {
+        this.sendBtn.disabled = true;
+      } else {
+        this.sendBtn.disabled = !this.inputEl || this.inputEl.value.trim() === '';
+      }
+    }
   }
 
   /**
@@ -137,10 +151,17 @@ class ChatWindow {
     metaEl.className = 'wxo-message__meta';
     const senderName = message.sender === 'user' ? 'あなた' : this.agent.name;
     const timeStr = new Date(message.timestamp || Date.now()).toLocaleTimeString('ja-JP', {
-      hour: '2-digit',
+      hour: 'numeric',
       minute: '2-digit',
     });
-    metaEl.textContent = `${senderName}  ${timeStr}`;
+    const nameSpan = document.createElement('span');
+    nameSpan.className = 'wxo-message__meta-name';
+    nameSpan.textContent = senderName;
+    const timeSpan = document.createElement('span');
+    timeSpan.className = 'wxo-message__meta-time';
+    timeSpan.textContent = timeStr;
+    metaEl.appendChild(nameSpan);
+    metaEl.appendChild(timeSpan);
     div.appendChild(metaEl);
 
     // Bubble content
@@ -155,6 +176,14 @@ class ChatWindow {
       contentEl.textContent = message.text || '';
     }
     div.appendChild(contentEl);
+
+    // Copy button for agent messages (WXOSDK-6)
+    if (!isLoading && message.sender === 'agent') {
+      const actionRow = document.createElement('div');
+      actionRow.className = 'wxo-message__actions';
+      actionRow.appendChild(this._createCopyButton(message.text || ''));
+      div.appendChild(actionRow);
+    }
 
     // Feedback buttons for agent messages (not loading)
     if (!isLoading && message.sender === 'agent' && this.feedbackEnabled && message.id && this.onFeedback) {
@@ -189,11 +218,13 @@ class ChatWindow {
     const thumbUp = document.createElement('button');
     thumbUp.className = 'wxo-feedback__btn';
     thumbUp.textContent = '👍';
+    thumbUp.title = '応答良好';
     thumbUp.addEventListener('click', () => this._onRatingClick(messageId, true, fbEl, messageText));
 
     const thumbDown = document.createElement('button');
     thumbDown.className = 'wxo-feedback__btn';
     thumbDown.textContent = '👎';
+    thumbDown.title = '応答不良';
     thumbDown.addEventListener('click', () => this._onRatingClick(messageId, false, fbEl, messageText));
 
     fbEl.appendChild(thumbUp);
@@ -263,6 +294,55 @@ class ChatWindow {
   _submitFeedback(messageId, isPositive, categories, text, fbEl) {
     this.onFeedback(messageId, isPositive, categories, text);
     fbEl.innerHTML = `<span class="wxo-feedback__thanks">${isPositive ? '👍' : '👎'} フィードバックありがとうございます</span>`;
+  }
+
+  _createCopyButton(text) {
+    const btn = document.createElement('button');
+    btn.className = 'wxo-copy-btn';
+    btn.title = 'コピー';
+    btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`;
+    btn.addEventListener('click', () => {
+      navigator.clipboard.writeText(text).then(() => {
+        btn.title = 'コピーしました';
+        setTimeout(() => { btn.title = 'コピー'; }, 2000);
+      }).catch(() => {});
+    });
+    return btn;
+  }
+
+  _renderWelcomeScreen() {
+    const prompts = Array.isArray(this.agent.quickStartPrompts) ? this.agent.quickStartPrompts : [];
+    const welcome = this.agent.welcomeMessage || `${this.agent.name}へようこそ`;
+    const subtitle = this.agent.welcomeSubtitle || '';
+
+    this.welcomeEl = document.createElement('div');
+    this.welcomeEl.className = 'wxo-welcome';
+    this.welcomeEl.innerHTML = `
+      <div class="wxo-welcome__icon">${this.agent.icon || '💬'}</div>
+      <div class="wxo-welcome__title">${this._escapeHtml(welcome)}</div>
+      ${subtitle ? `<div class="wxo-welcome__subtitle">${this._escapeHtml(subtitle)}</div>` : ''}
+      ${prompts.length > 0 ? `<div class="wxo-welcome__prompts">${prompts.map(p => `<button class="wxo-welcome__prompt">${this._escapeHtml(p)}</button>`).join('')}</div>` : ''}
+    `;
+
+    this.welcomeEl.querySelectorAll('.wxo-welcome__prompt').forEach((btn, i) => {
+      btn.addEventListener('click', () => {
+        if (this.inputEl) {
+          this.inputEl.value = prompts[i];
+          this.sendBtn.disabled = false;
+          this.inputEl.focus();
+          this._resizeInput();
+        }
+      });
+    });
+
+    this.messagesEl.appendChild(this.welcomeEl);
+  }
+
+  _hideWelcomeScreen() {
+    if (this.welcomeEl && this.welcomeEl.parentNode) {
+      this.welcomeEl.parentNode.removeChild(this.welcomeEl);
+      this.welcomeEl = null;
+    }
   }
 
   _toggleResize() {

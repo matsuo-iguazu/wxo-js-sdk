@@ -249,7 +249,7 @@ class UIManager {
         display: flex;
         align-items: center;
         justify-content: flex-end;
-        background: white;
+        background: linear-gradient(to bottom, #ffffff 0%, #ebf0fa 100%);
         border-radius: 24px;
         padding: 10px 18px;
         cursor: pointer;
@@ -271,6 +271,7 @@ class UIManager {
       .wxo-chat-window {
         width: 380px;
         height: 580px;
+        max-height: calc(100vh - 100px);
         background: white;
         border-radius: 12px;
         box-shadow: 0 8px 32px rgba(0,0,0,0.2);
@@ -294,6 +295,11 @@ class UIManager {
         justify-content: space-between;
         flex-shrink: 0;
         border-bottom: 1px solid #e0e0e0;
+      }
+      .wxo-chat-header__left {
+        display: flex;
+        align-items: center;
+        gap: 4px;
       }
       .wxo-chat-header__title {
         display: flex;
@@ -355,13 +361,17 @@ class UIManager {
       /* Sender name + time above bubble */
       .wxo-message__meta {
         font-size: 11px;
-        font-weight: 700;
         color: #161616;
         margin-bottom: 3px;
         padding: 0 4px;
+        display: flex;
+        gap: 6px;
+        align-items: baseline;
       }
-      .wxo-message--user .wxo-message__meta { text-align: right; }
-      .wxo-message--agent .wxo-message__meta { text-align: left; }
+      .wxo-message--user .wxo-message__meta { justify-content: flex-end; }
+      .wxo-message--agent .wxo-message__meta { justify-content: flex-start; }
+      .wxo-message__meta-name { font-weight: 700; font-size: 13px; }
+      .wxo-message__meta-time { font-weight: 400; color: #525252; }
 
       .wxo-message__content {
         padding: 10px 14px;
@@ -546,7 +556,7 @@ class UIManager {
 
       /* Input area */
       .wxo-chat-input-area {
-        padding: 12px;
+        padding: 8px 12px;
         border-top: 1px solid #e0e0e0;
         background: white;
         flex-shrink: 0;
@@ -594,6 +604,78 @@ class UIManager {
         cursor: pointer;
       }
       .wxo-chat-send:not(:disabled):hover { background: #393939; }
+
+      /* Welcome screen */
+      .wxo-welcome {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        padding: 32px 24px;
+        gap: 12px;
+        flex: 1;
+      }
+      .wxo-welcome__icon { font-size: 40px; }
+      .wxo-welcome__title {
+        font-size: 16px;
+        font-weight: 700;
+        color: #161616;
+      }
+      .wxo-welcome__subtitle {
+        font-size: 13px;
+        color: #525252;
+        line-height: 1.5;
+      }
+      .wxo-welcome__prompts {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        width: 100%;
+        margin-top: 8px;
+      }
+      .wxo-welcome__prompt {
+        background: white;
+        border: 1px solid #c6c6c6;
+        border-radius: 8px;
+        padding: 10px 14px;
+        font-size: 13px;
+        font-family: inherit;
+        color: #161616;
+        cursor: pointer;
+        text-align: left;
+        transition: background 0.15s, border-color 0.15s;
+      }
+      .wxo-welcome__prompt:hover {
+        background: #f4f4f4;
+        border-color: #8d8d8d;
+      }
+
+      /* Message action row (copy button) */
+      .wxo-message__actions {
+        display: flex;
+        gap: 4px;
+        margin-top: 4px;
+        padding: 0 4px;
+        opacity: 0;
+        transition: opacity 0.15s;
+      }
+      .wxo-message:hover .wxo-message__actions { opacity: 1; }
+      .wxo-copy-btn {
+        background: none;
+        border: 1px solid #e0e0e0;
+        border-radius: 4px;
+        padding: 3px 6px;
+        cursor: pointer;
+        color: #525252;
+        display: flex;
+        align-items: center;
+        transition: background 0.15s, color 0.15s;
+      }
+      .wxo-copy-btn:hover {
+        background: #f4f4f4;
+        color: #161616;
+      }
     `;
 
     document.head.appendChild(style);

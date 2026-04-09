@@ -20,6 +20,18 @@
     },
     feedbackWebhookUrl: 'YOUR_CODE_ENGINE_URL',  // フィードバック保存先 (Code Engine)
     feedbackUserInfo: garoon.base.user.getLoginUser(),  // Garoonユーザー情報をペイロードに含める
+    feedbackOptions: {
+      positive: {
+        showDetails: false,  // trueにするとカテゴリ/コメント入力パネルを表示
+        categories: ['役立った', '正確', 'わかりやすい', 'その他'],
+        disclaimer: ''
+      },
+      negative: {
+        showDetails: true,
+        categories: ['正しくない', '未完了', '長すぎます', '関係ない', 'その他'],
+        disclaimer: 'フィードバックに機密情報や個人を特定できる情報を含めないようにしてください'
+      }
+    },
     debug: false
   };
 
