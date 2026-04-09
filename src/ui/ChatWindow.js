@@ -3,8 +3,9 @@
  * Renders the full chat interface: header, messages, input, feedback buttons
  */
 class ChatWindow {
-  constructor({ agent, messages = [], onSend, onFeedback, onMinimize, onReload, feedbackEnabled = true, feedbackOptions = null }) {
+  constructor({ agent, messages = [], starterSettings = null, onSend, onFeedback, onMinimize, onReload, feedbackEnabled = true, feedbackOptions = null }) {
     this.agent = agent;
+    this.starterSettings = starterSettings;
     this.messages = [...messages];
     this.onSend = onSend;
     this.onFeedback = onFeedback;
@@ -311,29 +312,58 @@ class ChatWindow {
   }
 
   _renderWelcomeScreen() {
-    const prompts = Array.isArray(this.agent.quickStartPrompts) ? this.agent.quickStartPrompts : [];
-    const welcome = this.agent.welcomeMessage || `${this.agent.name}へようこそ`;
-    const subtitle = this.agent.welcomeSubtitle || '';
+    // Use API data if available, fallback to agent config
+    const greeting = this.starterSettings?.welcomeMessage
+      || this.agent.welcomeMessage
+      || `こんにちは！${this.agent.name}です。`;
+    const description = this.starterSettings?.description
+      || this.agent.welcomeSubtitle
+      || '';
+    // starterSettings.prompts: [{title, prompt}]; fallback: agent.quickStartPrompts (strings)
+    const prompts = this.starterSettings?.prompts
+      || (Array.isArray(this.agent.quickStartPrompts)
+        ? this.agent.quickStartPrompts.map(p => ({ title: p, prompt: p }))
+        : []);
 
     this.welcomeEl = document.createElement('div');
     this.welcomeEl.className = 'wxo-welcome';
-    this.welcomeEl.innerHTML = `
-      <div class="wxo-welcome__icon">${this.agent.icon || '💬'}</div>
-      <div class="wxo-welcome__title">${this._escapeHtml(welcome)}</div>
-      ${subtitle ? `<div class="wxo-welcome__subtitle">${this._escapeHtml(subtitle)}</div>` : ''}
-      ${prompts.length > 0 ? `<div class="wxo-welcome__prompts">${prompts.map(p => `<button class="wxo-welcome__prompt">${this._escapeHtml(p)}</button>`).join('')}</div>` : ''}
-    `;
 
-    this.welcomeEl.querySelectorAll('.wxo-welcome__prompt').forEach((btn, i) => {
-      btn.addEventListener('click', () => {
-        if (this.inputEl) {
-          this.inputEl.value = prompts[i];
-          this.sendBtn.disabled = false;
-          this.inputEl.focus();
-          this._resizeInput();
-        }
+    const greetingEl = document.createElement('div');
+    greetingEl.className = 'wxo-welcome__greeting';
+    greetingEl.textContent = greeting;
+    this.welcomeEl.appendChild(greetingEl);
+
+    if (description) {
+      const descEl = document.createElement('div');
+      descEl.className = 'wxo-welcome__description';
+      descEl.textContent = description;
+      this.welcomeEl.appendChild(descEl);
+    }
+
+    if (prompts.length > 0) {
+      const labelEl = document.createElement('div');
+      labelEl.className = 'wxo-welcome__prompts-label';
+      labelEl.textContent = '質問例';
+      this.welcomeEl.appendChild(labelEl);
+
+      const promptsEl = document.createElement('div');
+      promptsEl.className = 'wxo-welcome__prompts';
+      prompts.forEach(({ title, prompt }) => {
+        const btn = document.createElement('button');
+        btn.className = 'wxo-welcome__prompt';
+        btn.textContent = title;
+        btn.addEventListener('click', () => {
+          if (this.inputEl) {
+            this.inputEl.value = prompt;
+            this.sendBtn.disabled = false;
+            this.inputEl.focus();
+            this._resizeInput();
+          }
+        });
+        promptsEl.appendChild(btn);
       });
-    });
+      this.welcomeEl.appendChild(promptsEl);
+    }
 
     this.messagesEl.appendChild(this.welcomeEl);
   }

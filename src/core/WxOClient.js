@@ -163,6 +163,38 @@ class WxOClient {
   }
 
   /**
+   * Fetch welcome message and starter prompts from WxO API for an agent
+   * @param {string} agentId - internal agent id (from config.agents[].id)
+   * @returns {Promise<Object|null>} { welcomeMessage, description, prompts: [{title, prompt}] } or null on failure
+   */
+  async fetchChatStarterSettings(agentId) {
+    const agent = this.config.getAgent(agentId);
+    if (!agent) return null;
+
+    const params = agent.agentEnvironmentId
+      ? `?environment_id=${encodeURIComponent(agent.agentEnvironmentId)}`
+      : '';
+    const path = `/v1/orchestrate/agents/${encodeURIComponent(agent.agentId)}/chat-starter-settings${params}`;
+
+    try {
+      const data = await this.httpClient.get(path);
+      const welcomeMessage = data?.welcome_content?.welcome_message || null;
+      const description = data?.welcome_content?.description || null;
+      const rawPrompts = data?.starter_prompts?.prompts || [];
+      const prompts = rawPrompts
+        .filter(p => p.state === 'active')
+        .map(p => ({ title: p.title, prompt: p.prompt }));
+
+      return { welcomeMessage, description, prompts };
+    } catch (e) {
+      if (this.config.isDebug()) {
+        console.warn('[wxo-sdk] fetchChatStarterSettings failed:', e);
+      }
+      return null;
+    }
+  }
+
+  /**
    * End chat session for an agent
    * @param {string} agentId
    */

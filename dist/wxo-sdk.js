@@ -1028,6 +1028,38 @@
     }
 
     /**
+     * Fetch welcome message and starter prompts from WxO API for an agent
+     * @param {string} agentId - internal agent id (from config.agents[].id)
+     * @returns {Promise<Object|null>} { welcomeMessage, description, prompts: [{title, prompt}] } or null on failure
+     */
+    async fetchChatStarterSettings(agentId) {
+      const agent = this.config.getAgent(agentId);
+      if (!agent) return null;
+      const params = agent.agentEnvironmentId ? `?environment_id=${encodeURIComponent(agent.agentEnvironmentId)}` : '';
+      const path = `/v1/orchestrate/agents/${encodeURIComponent(agent.agentId)}/chat-starter-settings${params}`;
+      try {
+        const data = await this.httpClient.get(path);
+        const welcomeMessage = data?.welcome_content?.welcome_message || null;
+        const description = data?.welcome_content?.description || null;
+        const rawPrompts = data?.starter_prompts?.prompts || [];
+        const prompts = rawPrompts.filter(p => p.state === 'active').map(p => ({
+          title: p.title,
+          prompt: p.prompt
+        }));
+        return {
+          welcomeMessage,
+          description,
+          prompts
+        };
+      } catch (e) {
+        if (this.config.isDebug()) {
+          console.warn('[wxo-sdk] fetchChatStarterSettings failed:', e);
+        }
+        return null;
+      }
+    }
+
+    /**
      * End chat session for an agent
      * @param {string} agentId
      */
@@ -1183,6 +1215,7 @@
     constructor({
       agent,
       messages = [],
+      starterSettings = null,
       onSend,
       onFeedback,
       onMinimize,
@@ -1191,6 +1224,7 @@
       feedbackOptions = null
     }) {
       this.agent = agent;
+      this.starterSettings = starterSettings;
       this.messages = [...messages];
       this.onSend = onSend;
       this.onFeedback = onFeedback;
@@ -1474,27 +1508,52 @@
       return btn;
     }
     _renderWelcomeScreen() {
-      const prompts = Array.isArray(this.agent.quickStartPrompts) ? this.agent.quickStartPrompts : [];
-      const welcome = this.agent.welcomeMessage || `${this.agent.name}へようこそ`;
-      const subtitle = this.agent.welcomeSubtitle || '';
+      // Use API data if available, fallback to agent config
+      const greeting = this.starterSettings?.welcomeMessage || this.agent.welcomeMessage || `こんにちは！${this.agent.name}です。`;
+      const description = this.starterSettings?.description || this.agent.welcomeSubtitle || '';
+      // starterSettings.prompts: [{title, prompt}]; fallback: agent.quickStartPrompts (strings)
+      const prompts = this.starterSettings?.prompts || (Array.isArray(this.agent.quickStartPrompts) ? this.agent.quickStartPrompts.map(p => ({
+        title: p,
+        prompt: p
+      })) : []);
       this.welcomeEl = document.createElement('div');
       this.welcomeEl.className = 'wxo-welcome';
-      this.welcomeEl.innerHTML = `
-      <div class="wxo-welcome__icon">${this.agent.icon || '💬'}</div>
-      <div class="wxo-welcome__title">${this._escapeHtml(welcome)}</div>
-      ${subtitle ? `<div class="wxo-welcome__subtitle">${this._escapeHtml(subtitle)}</div>` : ''}
-      ${prompts.length > 0 ? `<div class="wxo-welcome__prompts">${prompts.map(p => `<button class="wxo-welcome__prompt">${this._escapeHtml(p)}</button>`).join('')}</div>` : ''}
-    `;
-      this.welcomeEl.querySelectorAll('.wxo-welcome__prompt').forEach((btn, i) => {
-        btn.addEventListener('click', () => {
-          if (this.inputEl) {
-            this.inputEl.value = prompts[i];
-            this.sendBtn.disabled = false;
-            this.inputEl.focus();
-            this._resizeInput();
-          }
+      const greetingEl = document.createElement('div');
+      greetingEl.className = 'wxo-welcome__greeting';
+      greetingEl.textContent = greeting;
+      this.welcomeEl.appendChild(greetingEl);
+      if (description) {
+        const descEl = document.createElement('div');
+        descEl.className = 'wxo-welcome__description';
+        descEl.textContent = description;
+        this.welcomeEl.appendChild(descEl);
+      }
+      if (prompts.length > 0) {
+        const labelEl = document.createElement('div');
+        labelEl.className = 'wxo-welcome__prompts-label';
+        labelEl.textContent = '質問例';
+        this.welcomeEl.appendChild(labelEl);
+        const promptsEl = document.createElement('div');
+        promptsEl.className = 'wxo-welcome__prompts';
+        prompts.forEach(({
+          title,
+          prompt
+        }) => {
+          const btn = document.createElement('button');
+          btn.className = 'wxo-welcome__prompt';
+          btn.textContent = title;
+          btn.addEventListener('click', () => {
+            if (this.inputEl) {
+              this.inputEl.value = prompt;
+              this.sendBtn.disabled = false;
+              this.inputEl.focus();
+              this._resizeInput();
+            }
+          });
+          promptsEl.appendChild(btn);
         });
-      });
+        this.welcomeEl.appendChild(promptsEl);
+      }
       this.messagesEl.appendChild(this.welcomeEl);
     }
     _hideWelcomeScreen() {
@@ -1637,12 +1696,15 @@
 
       // First open for this agent: start session and create window
       this.currentAgentId = agentId;
-      await this.client.startChat(agentId);
+
+      // Fetch session and starter settings concurrently
+      const [, starterSettings] = await Promise.all([this.client.startChat(agentId), this.client.fetchChatStarterSettings(agentId).catch(() => null)]);
       const agent = this.config.getAgent(agentId);
       const feedbackEnabled = this.config.isFeatureEnabled('feedback');
       const feedbackOptions = this.config.getFeedbackOptions();
       const chatWindow = new ChatWindow({
         agent,
+        starterSettings,
         messages: this.client.getMessages(),
         feedbackEnabled,
         feedbackOptions,
@@ -2120,46 +2182,59 @@
       .wxo-welcome {
         display: flex;
         flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        text-align: center;
-        padding: 32px 24px;
-        gap: 12px;
+        align-items: flex-start;
+        padding: 24px 20px 16px;
+        gap: 0;
         flex: 1;
+        overflow-y: auto;
       }
-      .wxo-welcome__icon { font-size: 40px; }
-      .wxo-welcome__title {
-        font-size: 16px;
+      .wxo-welcome__greeting {
+        font-size: 18px;
         font-weight: 700;
         color: #161616;
+        margin-bottom: 8px;
+        line-height: 1.3;
       }
-      .wxo-welcome__subtitle {
+      .wxo-welcome__description {
         font-size: 13px;
         color: #525252;
-        line-height: 1.5;
+        line-height: 1.6;
+        margin-bottom: 24px;
+      }
+      .wxo-welcome__prompts-label {
+        font-size: 11px;
+        font-weight: 600;
+        color: #525252;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        margin-bottom: 10px;
       }
       .wxo-welcome__prompts {
-        display: flex;
-        flex-direction: column;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
         gap: 8px;
         width: 100%;
-        margin-top: 8px;
       }
       .wxo-welcome__prompt {
         background: white;
-        border: 1px solid #c6c6c6;
+        border: 1px solid #e0e0e0;
         border-radius: 8px;
-        padding: 10px 14px;
+        padding: 12px 14px;
         font-size: 13px;
         font-family: inherit;
         color: #161616;
         cursor: pointer;
         text-align: left;
-        transition: background 0.15s, border-color 0.15s;
+        line-height: 1.4;
+        transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
+        min-height: 60px;
+        display: flex;
+        align-items: flex-start;
       }
       .wxo-welcome__prompt:hover {
         background: #f4f4f4;
         border-color: #8d8d8d;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.08);
       }
 
       /* Message action row (copy button) */

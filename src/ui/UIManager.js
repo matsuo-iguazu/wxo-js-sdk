@@ -118,7 +118,12 @@ class UIManager {
 
     // First open for this agent: start session and create window
     this.currentAgentId = agentId;
-    await this.client.startChat(agentId);
+
+    // Fetch session and starter settings concurrently
+    const [, starterSettings] = await Promise.all([
+      this.client.startChat(agentId),
+      this.client.fetchChatStarterSettings(agentId).catch(() => null),
+    ]);
 
     const agent = this.config.getAgent(agentId);
     const feedbackEnabled = this.config.isFeatureEnabled('feedback');
@@ -126,6 +131,7 @@ class UIManager {
 
     const chatWindow = new ChatWindow({
       agent,
+      starterSettings,
       messages: this.client.getMessages(),
       feedbackEnabled,
       feedbackOptions,
@@ -609,46 +615,59 @@ class UIManager {
       .wxo-welcome {
         display: flex;
         flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        text-align: center;
-        padding: 32px 24px;
-        gap: 12px;
+        align-items: flex-start;
+        padding: 24px 20px 16px;
+        gap: 0;
         flex: 1;
+        overflow-y: auto;
       }
-      .wxo-welcome__icon { font-size: 40px; }
-      .wxo-welcome__title {
-        font-size: 16px;
+      .wxo-welcome__greeting {
+        font-size: 18px;
         font-weight: 700;
         color: #161616;
+        margin-bottom: 8px;
+        line-height: 1.3;
       }
-      .wxo-welcome__subtitle {
+      .wxo-welcome__description {
         font-size: 13px;
         color: #525252;
-        line-height: 1.5;
+        line-height: 1.6;
+        margin-bottom: 24px;
+      }
+      .wxo-welcome__prompts-label {
+        font-size: 11px;
+        font-weight: 600;
+        color: #525252;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        margin-bottom: 10px;
       }
       .wxo-welcome__prompts {
-        display: flex;
-        flex-direction: column;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
         gap: 8px;
         width: 100%;
-        margin-top: 8px;
       }
       .wxo-welcome__prompt {
         background: white;
-        border: 1px solid #c6c6c6;
+        border: 1px solid #e0e0e0;
         border-radius: 8px;
-        padding: 10px 14px;
+        padding: 12px 14px;
         font-size: 13px;
         font-family: inherit;
         color: #161616;
         cursor: pointer;
         text-align: left;
-        transition: background 0.15s, border-color 0.15s;
+        line-height: 1.4;
+        transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
+        min-height: 60px;
+        display: flex;
+        align-items: flex-start;
       }
       .wxo-welcome__prompt:hover {
         background: #f4f4f4;
         border-color: #8d8d8d;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.08);
       }
 
       /* Message action row (copy button) */
