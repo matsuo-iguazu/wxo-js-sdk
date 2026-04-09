@@ -177,8 +177,8 @@ class ChatWindow {
     }
     div.appendChild(contentEl);
 
-    // Copy button for agent messages (WXOSDK-6)
-    if (!isLoading && message.sender === 'agent') {
+    // Copy button (agent: always visible, user: hover-only) (WXOSDK-6)
+    if (!isLoading) {
       const actionRow = document.createElement('div');
       actionRow.className = 'wxo-message__actions';
       actionRow.appendChild(this._createCopyButton(message.text || ''));

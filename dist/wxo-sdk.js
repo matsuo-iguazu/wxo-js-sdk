@@ -1356,8 +1356,8 @@
       }
       div.appendChild(contentEl);
 
-      // Copy button for agent messages (WXOSDK-6)
-      if (!isLoading && message.sender === 'agent') {
+      // Copy button (agent: always visible, user: hover-only) (WXOSDK-6)
+      if (!isLoading) {
         const actionRow = document.createElement('div');
         actionRow.className = 'wxo-message__actions';
         actionRow.appendChild(this._createCopyButton(message.text || ''));
@@ -1760,17 +1760,17 @@
         display: flex;
         align-items: center;
         justify-content: flex-end;
-        background: linear-gradient(to bottom, #ffffff 0%, #ebf0fa 100%);
+        background: linear-gradient(to bottom, #d4e4f7 0%, #ebf0fa 40%, #f8fbff 100%);
         border-radius: 24px;
         padding: 10px 18px;
         cursor: pointer;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        box-shadow: inset 0 2px 5px rgba(0,0,0,0.1), 0 1px 3px rgba(0,0,0,0.08);
         white-space: nowrap;
         transform-origin: right center;
         animation: wxo-agent-rise 0.45s cubic-bezier(0.34, 1.3, 0.64, 1) both;
       }
       .wxo-agent-item:hover {
-        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        box-shadow: inset 0 2px 6px rgba(0,0,0,0.14), 0 1px 3px rgba(0,0,0,0.1);
       }
       .wxo-agent-item__label {
         font-size: 14px;
@@ -2067,7 +2067,7 @@
 
       /* Input area */
       .wxo-chat-input-area {
-        padding: 8px 12px;
+        padding: 12px;
         border-top: 1px solid #e0e0e0;
         background: white;
         flex-shrink: 0;
@@ -2171,7 +2171,9 @@
         opacity: 0;
         transition: opacity 0.15s;
       }
-      .wxo-message:hover .wxo-message__actions { opacity: 1; }
+      .wxo-message--agent .wxo-message__actions { opacity: 1; }
+      .wxo-message--user .wxo-message__actions { justify-content: flex-end; }
+      .wxo-message--user:hover .wxo-message__actions { opacity: 1; }
       .wxo-copy-btn {
         background: none;
         border: 1px solid #e0e0e0;
