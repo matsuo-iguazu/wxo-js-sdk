@@ -652,7 +652,7 @@ class UIManager {
         background: white;
         border: 1px solid #e0e0e0;
         border-radius: 8px;
-        padding: 12px 14px;
+        padding: 14px 16px;
         font-size: 13px;
         font-family: inherit;
         color: #161616;
@@ -661,10 +661,9 @@ class UIManager {
         line-height: 1.5;
         transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
         display: flex;
-        justify-content: space-between;
+        flex-direction: column;
         align-items: flex-start;
-        gap: 8px;
-        min-height: 72px;
+        min-height: 96px;
         overflow: hidden;
       }
       .wxo-welcome__prompt:hover {
@@ -677,13 +676,15 @@ class UIManager {
         -webkit-line-clamp: 3;
         -webkit-box-orient: vertical;
         overflow: hidden;
-        flex: 1;
+        width: 100%;
+        margin-bottom: auto;
       }
       .wxo-welcome__prompt-arrow {
         color: ${primaryColor};
-        flex-shrink: 0;
         font-size: 14px;
         line-height: 1;
+        align-self: flex-end;
+        margin-top: 8px;
       }
 
       /* Message action row (copy button) */
