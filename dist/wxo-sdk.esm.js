@@ -122,6 +122,8 @@ class Config {
         fileUpload: false,
         voiceInput: false
       },
+      defaultLocale: null,
+      // Locale for welcome message / starter prompts (e.g. 'ja', 'en'). Falls back to browser language.
       feedbackWebhookUrl: null,
       // POST destination for feedback data (optional)
       feedbackUserInfo: null,
@@ -310,12 +312,22 @@ class Config {
   }
 
   /**
+   * Get locale for chat starter settings (welcome message / prompts).
+   * Priority: config.defaultLocale → navigator.language → null
+   * @returns {string|null}
+   */
+  getLocale() {
+    var _this$config6;
+    return ((_this$config6 = this.config) === null || _this$config6 === void 0 ? void 0 : _this$config6.defaultLocale) || (typeof navigator !== 'undefined' ? navigator.language : null) || null;
+  }
+
+  /**
    * Check if debug mode is enabled
    * @returns {boolean} True if debug mode is enabled
    */
   isDebug() {
-    var _this$config6;
-    return ((_this$config6 = this.config) === null || _this$config6 === void 0 ? void 0 : _this$config6.debug) === true;
+    var _this$config7;
+    return ((_this$config7 = this.config) === null || _this$config7 === void 0 ? void 0 : _this$config7.debug) === true;
   }
 }
 
@@ -1205,7 +1217,9 @@ class WxOClient {
     return _asyncToGenerator(function* () {
       var agent = _this6.config.getAgent(agentId);
       if (!agent) return null;
-      var path = "/mfe_home_archer/api/v1/orchestrate/agents/".concat(encodeURIComponent(agent.agentId), "/chat-starter-settings");
+      var locale = _this6.config.getLocale();
+      var params = locale ? "?locale=".concat(encodeURIComponent(locale)) : '';
+      var path = "/mfe_home_archer/api/v1/orchestrate/agents/".concat(encodeURIComponent(agent.agentId), "/chat-starter-settings").concat(params);
       try {
         var _data$welcome_content, _data$welcome_content2, _data$starter_prompts;
         var data = yield _this6.httpClient.get(path);

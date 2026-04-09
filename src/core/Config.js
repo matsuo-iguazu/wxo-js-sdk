@@ -33,6 +33,7 @@ class Config {
         fileUpload: false,
         voiceInput: false
       },
+      defaultLocale: null,       // Locale for welcome message / starter prompts (e.g. 'ja', 'en'). Falls back to browser language.
       feedbackWebhookUrl: null,  // POST destination for feedback data (optional)
       feedbackUserInfo: null,    // User info object to spread into feedback payload (optional)
       feedbackOptions: {
@@ -219,6 +220,17 @@ class Config {
    */
   getFeedbackOptions() {
     return this.config?.feedbackOptions || null;
+  }
+
+  /**
+   * Get locale for chat starter settings (welcome message / prompts).
+   * Priority: config.defaultLocale → navigator.language → null
+   * @returns {string|null}
+   */
+  getLocale() {
+    return this.config?.defaultLocale
+      || (typeof navigator !== 'undefined' ? navigator.language : null)
+      || null;
   }
 
   /**

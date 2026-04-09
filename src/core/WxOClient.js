@@ -171,7 +171,9 @@ class WxOClient {
     const agent = this.config.getAgent(agentId);
     if (!agent) return null;
 
-    const path = `/mfe_home_archer/api/v1/orchestrate/agents/${encodeURIComponent(agent.agentId)}/chat-starter-settings`;
+    const locale = this.config.getLocale();
+    const params = locale ? `?locale=${encodeURIComponent(locale)}` : '';
+    const path = `/mfe_home_archer/api/v1/orchestrate/agents/${encodeURIComponent(agent.agentId)}/chat-starter-settings${params}`;
 
     try {
       const data = await this.httpClient.get(path);

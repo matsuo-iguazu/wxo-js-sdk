@@ -39,6 +39,8 @@
           fileUpload: false,
           voiceInput: false
         },
+        defaultLocale: null,
+        // Locale for welcome message / starter prompts (e.g. 'ja', 'en'). Falls back to browser language.
         feedbackWebhookUrl: null,
         // POST destination for feedback data (optional)
         feedbackUserInfo: null,
@@ -223,6 +225,15 @@
      */
     getFeedbackOptions() {
       return this.config?.feedbackOptions || null;
+    }
+
+    /**
+     * Get locale for chat starter settings (welcome message / prompts).
+     * Priority: config.defaultLocale → navigator.language → null
+     * @returns {string|null}
+     */
+    getLocale() {
+      return this.config?.defaultLocale || (typeof navigator !== 'undefined' ? navigator.language : null) || null;
     }
 
     /**
@@ -1035,7 +1046,9 @@
     async fetchChatStarterSettings(agentId) {
       const agent = this.config.getAgent(agentId);
       if (!agent) return null;
-      const path = `/mfe_home_archer/api/v1/orchestrate/agents/${encodeURIComponent(agent.agentId)}/chat-starter-settings`;
+      const locale = this.config.getLocale();
+      const params = locale ? `?locale=${encodeURIComponent(locale)}` : '';
+      const path = `/mfe_home_archer/api/v1/orchestrate/agents/${encodeURIComponent(agent.agentId)}/chat-starter-settings${params}`;
       try {
         const data = await this.httpClient.get(path);
         const welcomeMessage = data?.welcome_content?.welcome_message || null;
