@@ -1553,7 +1553,14 @@
         }) => {
           const btn = document.createElement('button');
           btn.className = 'wxo-welcome__prompt';
-          btn.textContent = title;
+          const textSpan = document.createElement('span');
+          textSpan.className = 'wxo-welcome__prompt-text';
+          textSpan.textContent = title;
+          const arrowSpan = document.createElement('span');
+          arrowSpan.className = 'wxo-welcome__prompt-arrow';
+          arrowSpan.textContent = '→';
+          btn.appendChild(textSpan);
+          btn.appendChild(arrowSpan);
           btn.addEventListener('click', () => {
             if (this.inputEl) {
               this.inputEl.value = prompt;
@@ -2222,8 +2229,8 @@
         margin-bottom: 10px;
       }
       .wxo-welcome__prompts {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
+        display: flex;
+        flex-direction: column;
         gap: 8px;
         width: 100%;
       }
@@ -2237,16 +2244,30 @@
         color: #161616;
         cursor: pointer;
         text-align: left;
-        line-height: 1.4;
+        line-height: 1.5;
         transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
-        min-height: 60px;
         display: flex;
-        align-items: flex-start;
+        justify-content: space-between;
+        align-items: flex-end;
+        gap: 8px;
       }
       .wxo-welcome__prompt:hover {
         background: #f4f4f4;
         border-color: #8d8d8d;
         box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+      }
+      .wxo-welcome__prompt-text {
+        display: -webkit-box;
+        -webkit-line-clamp: 3;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        flex: 1;
+      }
+      .wxo-welcome__prompt-arrow {
+        color: ${primaryColor};
+        flex-shrink: 0;
+        font-size: 14px;
+        line-height: 1;
       }
 
       /* Message action row (copy button) */

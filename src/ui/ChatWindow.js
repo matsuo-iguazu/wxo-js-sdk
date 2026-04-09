@@ -351,7 +351,14 @@ class ChatWindow {
       prompts.forEach(({ title, prompt }) => {
         const btn = document.createElement('button');
         btn.className = 'wxo-welcome__prompt';
-        btn.textContent = title;
+        const textSpan = document.createElement('span');
+        textSpan.className = 'wxo-welcome__prompt-text';
+        textSpan.textContent = title;
+        const arrowSpan = document.createElement('span');
+        arrowSpan.className = 'wxo-welcome__prompt-arrow';
+        arrowSpan.textContent = '→';
+        btn.appendChild(textSpan);
+        btn.appendChild(arrowSpan);
         btn.addEventListener('click', () => {
           if (this.inputEl) {
             this.inputEl.value = prompt;
