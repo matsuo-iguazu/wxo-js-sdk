@@ -442,21 +442,16 @@ class UIManager {
         margin: 4px 0; padding-left: 20px;
       }
 
-      /* Feedback - initial buttons */
-      .wxo-feedback {
-        display: flex;
-        flex-direction: row;
-        gap: 4px;
-        margin-top: 4px;
-        padding: 0 4px;
-      }
+      /* Feedback - thumbs (inline in action row, no border) */
+      .wxo-feedback { margin-top: 4px; }
       .wxo-feedback__btn {
-        background: white;
-        border: 1px solid #e0e0e0;
+        background: none;
+        border: none;
         border-radius: 4px;
-        padding: 3px 8px;
+        padding: 3px 4px;
         cursor: pointer;
-        font-size: 13px;
+        font-size: 16px;
+        line-height: 1;
         transition: background 0.15s;
       }
       .wxo-feedback__btn:hover { background: #f0f0f0; }
@@ -468,9 +463,10 @@ class UIManager {
         gap: 10px;
         border: 1px solid #e0e0e0;
         border-radius: 8px;
-        padding: 14px;
+        padding: 14px 14px 0;
         max-width: 280px;
         background: white;
+        overflow: hidden;
       }
       .wxo-feedback__panel-header {
         display: flex;
@@ -502,6 +498,9 @@ class UIManager {
         font-family: inherit;
         cursor: pointer;
         transition: background 0.15s, border-color 0.15s, color 0.15s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
       }
       .wxo-feedback__pill:hover { background: #f4f4f4; }
       .wxo-feedback__pill--selected {
@@ -528,14 +527,16 @@ class UIManager {
       }
       .wxo-feedback__panel-actions {
         display: flex;
-        gap: 8px;
+        margin: 0 -14px;
+        border-top: 1px solid #e0e0e0;
       }
       .wxo-feedback__cancel {
         flex: 1;
         background: white;
-        border: 1px solid #c6c6c6;
-        border-radius: 4px;
-        padding: 7px 12px;
+        border: none;
+        border-right: 1px solid #e0e0e0;
+        border-radius: 0;
+        padding: 10px 12px;
         font-size: 12px;
         font-family: inherit;
         cursor: pointer;
@@ -547,8 +548,8 @@ class UIManager {
         background: ${primaryColor};
         color: white;
         border: none;
-        border-radius: 4px;
-        padding: 7px 12px;
+        border-radius: 0;
+        padding: 10px 12px;
         font-size: 12px;
         font-family: inherit;
         cursor: pointer;
@@ -701,7 +702,7 @@ class UIManager {
       .wxo-message--user:hover .wxo-message__actions { opacity: 1; }
       .wxo-copy-btn {
         background: none;
-        border: 1px solid #e0e0e0;
+        border: none;
         border-radius: 4px;
         padding: 3px 6px;
         cursor: pointer;
@@ -713,6 +714,44 @@ class UIManager {
       .wxo-copy-btn:hover {
         background: #f4f4f4;
         color: #161616;
+      }
+
+      /* Custom tooltip (data-tooltip) */
+      [data-tooltip] { position: relative; }
+      [data-tooltip]::after {
+        content: attr(data-tooltip);
+        position: absolute;
+        bottom: calc(100% + 8px);
+        left: 50%;
+        transform: translateX(-50%);
+        background: #161616;
+        color: #ffffff;
+        font-size: 11px;
+        padding: 4px 8px;
+        border-radius: 4px;
+        white-space: nowrap;
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 0.1s;
+        z-index: 100;
+      }
+      [data-tooltip]::before {
+        content: '';
+        position: absolute;
+        bottom: calc(100% + 4px);
+        left: 50%;
+        transform: translateX(-50%);
+        border: 4px solid transparent;
+        border-top-color: #161616;
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 0.1s;
+        z-index: 100;
+      }
+      [data-tooltip]:hover::after,
+      [data-tooltip]:hover::before {
+        opacity: 1;
+        transition-delay: 0.1s;
       }
     `;
 

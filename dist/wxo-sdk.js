@@ -1258,15 +1258,15 @@
       this.el.innerHTML = `
       <div class="wxo-chat-header">
         <div class="wxo-chat-header__left">
-          <button class="wxo-btn-icon wxo-btn-reload" aria-label="Reload" title="チャットのリセット">↺</button>
+          <button class="wxo-btn-icon wxo-btn-reload" aria-label="Reload" data-tooltip="チャットのリセット">↺</button>
           <div class="wxo-chat-header__title">
             <span class="wxo-chat-header__icon">${this.agent.icon || '💬'}</span>
             <span class="wxo-chat-header__name">${this._escapeHtml(this.agent.name)}</span>
           </div>
         </div>
         <div class="wxo-chat-header__actions">
-          <button class="wxo-btn-icon wxo-btn-resize" aria-label="Resize" title="サイズ変更">⤢</button>
-          <button class="wxo-btn-icon wxo-btn-minimize" aria-label="Minimize" title="最小化">−</button>
+          <button class="wxo-btn-icon wxo-btn-resize" aria-label="Resize" data-tooltip="サイズ変更">⤢</button>
+          <button class="wxo-btn-icon wxo-btn-minimize" aria-label="Minimize" data-tooltip="最小化">−</button>
         </div>
       </div>
       <div class="wxo-chat-messages"></div>
@@ -1402,20 +1402,26 @@
       }
       div.appendChild(contentEl);
 
-      // Copy button (agent: always visible, user: hover-only) (WXOSDK-6)
+      // Action row: thumbs (agent only) + copy — agent always visible, user hover-only
       if (!isLoading) {
         const actionRow = document.createElement('div');
         actionRow.className = 'wxo-message__actions';
+        let fbPanelEl = null;
+        if (message.sender === 'agent' && this.feedbackEnabled && message.id && this.onFeedback) {
+          fbPanelEl = document.createElement('div');
+          fbPanelEl.className = 'wxo-feedback';
+          [['👍', true, '応答良好'], ['👎', false, '応答不良']].forEach(([emoji, isPositive, tip]) => {
+            const btn = document.createElement('button');
+            btn.className = 'wxo-feedback__btn';
+            btn.textContent = emoji;
+            btn.dataset.tooltip = tip;
+            btn.addEventListener('click', () => this._onRatingClick(message.id, isPositive, fbPanelEl));
+            actionRow.appendChild(btn);
+          });
+        }
         actionRow.appendChild(this._createCopyButton(message.text || ''));
         div.appendChild(actionRow);
-      }
-
-      // Feedback buttons for agent messages (not loading)
-      if (!isLoading && message.sender === 'agent' && this.feedbackEnabled && message.id && this.onFeedback) {
-        const fbEl = document.createElement('div');
-        fbEl.className = 'wxo-feedback';
-        this._renderFeedbackButtons(message.id, fbEl, message.text);
-        div.appendChild(fbEl);
+        if (fbPanelEl) div.appendChild(fbPanelEl);
       }
       this.messagesEl.appendChild(div);
       return div;
@@ -1434,22 +1440,7 @@
       }
       this.loadingEl = null;
     }
-    _renderFeedbackButtons(messageId, fbEl, messageText) {
-      fbEl.innerHTML = '';
-      const thumbUp = document.createElement('button');
-      thumbUp.className = 'wxo-feedback__btn';
-      thumbUp.textContent = '👍';
-      thumbUp.title = '応答良好';
-      thumbUp.addEventListener('click', () => this._onRatingClick(messageId, true, fbEl, messageText));
-      const thumbDown = document.createElement('button');
-      thumbDown.className = 'wxo-feedback__btn';
-      thumbDown.textContent = '👎';
-      thumbDown.title = '応答不良';
-      thumbDown.addEventListener('click', () => this._onRatingClick(messageId, false, fbEl, messageText));
-      fbEl.appendChild(thumbUp);
-      fbEl.appendChild(thumbDown);
-    }
-    _onRatingClick(messageId, isPositive, fbEl, messageText) {
+    _onRatingClick(messageId, isPositive, fbEl) {
       const type = isPositive ? 'positive' : 'negative';
       const opts = this.feedbackOptions?.[type];
 
@@ -1496,7 +1487,7 @@
         this._submitFeedback(messageId, isPositive, [...selectedCategories], textarea.value.trim(), fbEl);
       });
       fbEl.querySelector('.wxo-feedback__cancel').addEventListener('click', () => {
-        this._renderFeedbackButtons(messageId, fbEl, messageText);
+        fbEl.innerHTML = ''; // thumbs remain in action row above
       });
       this._scrollToBottom();
     }
@@ -1507,13 +1498,13 @@
     _createCopyButton(text) {
       const btn = document.createElement('button');
       btn.className = 'wxo-copy-btn';
-      btn.title = 'コピー';
+      btn.dataset.tooltip = 'コピー';
       btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`;
       btn.addEventListener('click', () => {
         navigator.clipboard.writeText(text).then(() => {
-          btn.title = 'コピーしました';
+          btn.dataset.tooltip = 'コピーしました';
           setTimeout(() => {
-            btn.title = 'コピー';
+            btn.dataset.tooltip = 'コピー';
           }, 2000);
         }).catch(() => {});
       });
@@ -2028,21 +2019,16 @@
         margin: 4px 0; padding-left: 20px;
       }
 
-      /* Feedback - initial buttons */
-      .wxo-feedback {
-        display: flex;
-        flex-direction: row;
-        gap: 4px;
-        margin-top: 4px;
-        padding: 0 4px;
-      }
+      /* Feedback - thumbs (inline in action row, no border) */
+      .wxo-feedback { margin-top: 4px; }
       .wxo-feedback__btn {
-        background: white;
-        border: 1px solid #e0e0e0;
+        background: none;
+        border: none;
         border-radius: 4px;
-        padding: 3px 8px;
+        padding: 3px 4px;
         cursor: pointer;
-        font-size: 13px;
+        font-size: 16px;
+        line-height: 1;
         transition: background 0.15s;
       }
       .wxo-feedback__btn:hover { background: #f0f0f0; }
@@ -2054,9 +2040,10 @@
         gap: 10px;
         border: 1px solid #e0e0e0;
         border-radius: 8px;
-        padding: 14px;
+        padding: 14px 14px 0;
         max-width: 280px;
         background: white;
+        overflow: hidden;
       }
       .wxo-feedback__panel-header {
         display: flex;
@@ -2088,6 +2075,9 @@
         font-family: inherit;
         cursor: pointer;
         transition: background 0.15s, border-color 0.15s, color 0.15s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
       }
       .wxo-feedback__pill:hover { background: #f4f4f4; }
       .wxo-feedback__pill--selected {
@@ -2114,14 +2104,16 @@
       }
       .wxo-feedback__panel-actions {
         display: flex;
-        gap: 8px;
+        margin: 0 -14px;
+        border-top: 1px solid #e0e0e0;
       }
       .wxo-feedback__cancel {
         flex: 1;
         background: white;
-        border: 1px solid #c6c6c6;
-        border-radius: 4px;
-        padding: 7px 12px;
+        border: none;
+        border-right: 1px solid #e0e0e0;
+        border-radius: 0;
+        padding: 10px 12px;
         font-size: 12px;
         font-family: inherit;
         cursor: pointer;
@@ -2133,8 +2125,8 @@
         background: ${primaryColor};
         color: white;
         border: none;
-        border-radius: 4px;
-        padding: 7px 12px;
+        border-radius: 0;
+        padding: 10px 12px;
         font-size: 12px;
         font-family: inherit;
         cursor: pointer;
@@ -2287,7 +2279,7 @@
       .wxo-message--user:hover .wxo-message__actions { opacity: 1; }
       .wxo-copy-btn {
         background: none;
-        border: 1px solid #e0e0e0;
+        border: none;
         border-radius: 4px;
         padding: 3px 6px;
         cursor: pointer;
@@ -2299,6 +2291,44 @@
       .wxo-copy-btn:hover {
         background: #f4f4f4;
         color: #161616;
+      }
+
+      /* Custom tooltip (data-tooltip) */
+      [data-tooltip] { position: relative; }
+      [data-tooltip]::after {
+        content: attr(data-tooltip);
+        position: absolute;
+        bottom: calc(100% + 8px);
+        left: 50%;
+        transform: translateX(-50%);
+        background: #161616;
+        color: #ffffff;
+        font-size: 11px;
+        padding: 4px 8px;
+        border-radius: 4px;
+        white-space: nowrap;
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 0.1s;
+        z-index: 100;
+      }
+      [data-tooltip]::before {
+        content: '';
+        position: absolute;
+        bottom: calc(100% + 4px);
+        left: 50%;
+        transform: translateX(-50%);
+        border: 4px solid transparent;
+        border-top-color: #161616;
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 0.1s;
+        z-index: 100;
+      }
+      [data-tooltip]:hover::after,
+      [data-tooltip]:hover::before {
+        opacity: 1;
+        transition-delay: 0.1s;
       }
     `;
       document.head.appendChild(style);

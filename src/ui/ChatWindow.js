@@ -29,15 +29,15 @@ class ChatWindow {
     this.el.innerHTML = `
       <div class="wxo-chat-header">
         <div class="wxo-chat-header__left">
-          <button class="wxo-btn-icon wxo-btn-reload" aria-label="Reload" title="チャットのリセット">↺</button>
+          <button class="wxo-btn-icon wxo-btn-reload" aria-label="Reload" data-tooltip="チャットのリセット">↺</button>
           <div class="wxo-chat-header__title">
             <span class="wxo-chat-header__icon">${this.agent.icon || '💬'}</span>
             <span class="wxo-chat-header__name">${this._escapeHtml(this.agent.name)}</span>
           </div>
         </div>
         <div class="wxo-chat-header__actions">
-          <button class="wxo-btn-icon wxo-btn-resize" aria-label="Resize" title="サイズ変更">⤢</button>
-          <button class="wxo-btn-icon wxo-btn-minimize" aria-label="Minimize" title="最小化">−</button>
+          <button class="wxo-btn-icon wxo-btn-resize" aria-label="Resize" data-tooltip="サイズ変更">⤢</button>
+          <button class="wxo-btn-icon wxo-btn-minimize" aria-label="Minimize" data-tooltip="最小化">−</button>
         </div>
       </div>
       <div class="wxo-chat-messages"></div>
@@ -178,20 +178,29 @@ class ChatWindow {
     }
     div.appendChild(contentEl);
 
-    // Copy button (agent: always visible, user: hover-only) (WXOSDK-6)
+    // Action row: thumbs (agent only) + copy — agent always visible, user hover-only
     if (!isLoading) {
       const actionRow = document.createElement('div');
       actionRow.className = 'wxo-message__actions';
+
+      let fbPanelEl = null;
+      if (message.sender === 'agent' && this.feedbackEnabled && message.id && this.onFeedback) {
+        fbPanelEl = document.createElement('div');
+        fbPanelEl.className = 'wxo-feedback';
+
+        [['👍', true, '応答良好'], ['👎', false, '応答不良']].forEach(([emoji, isPositive, tip]) => {
+          const btn = document.createElement('button');
+          btn.className = 'wxo-feedback__btn';
+          btn.textContent = emoji;
+          btn.dataset.tooltip = tip;
+          btn.addEventListener('click', () => this._onRatingClick(message.id, isPositive, fbPanelEl));
+          actionRow.appendChild(btn);
+        });
+      }
+
       actionRow.appendChild(this._createCopyButton(message.text || ''));
       div.appendChild(actionRow);
-    }
-
-    // Feedback buttons for agent messages (not loading)
-    if (!isLoading && message.sender === 'agent' && this.feedbackEnabled && message.id && this.onFeedback) {
-      const fbEl = document.createElement('div');
-      fbEl.className = 'wxo-feedback';
-      this._renderFeedbackButtons(message.id, fbEl, message.text);
-      div.appendChild(fbEl);
+      if (fbPanelEl) div.appendChild(fbPanelEl);
     }
 
     this.messagesEl.appendChild(div);
@@ -214,25 +223,7 @@ class ChatWindow {
     this.loadingEl = null;
   }
 
-  _renderFeedbackButtons(messageId, fbEl, messageText) {
-    fbEl.innerHTML = '';
-    const thumbUp = document.createElement('button');
-    thumbUp.className = 'wxo-feedback__btn';
-    thumbUp.textContent = '👍';
-    thumbUp.title = '応答良好';
-    thumbUp.addEventListener('click', () => this._onRatingClick(messageId, true, fbEl, messageText));
-
-    const thumbDown = document.createElement('button');
-    thumbDown.className = 'wxo-feedback__btn';
-    thumbDown.textContent = '👎';
-    thumbDown.title = '応答不良';
-    thumbDown.addEventListener('click', () => this._onRatingClick(messageId, false, fbEl, messageText));
-
-    fbEl.appendChild(thumbUp);
-    fbEl.appendChild(thumbDown);
-  }
-
-  _onRatingClick(messageId, isPositive, fbEl, messageText) {
+  _onRatingClick(messageId, isPositive, fbEl) {
     const type = isPositive ? 'positive' : 'negative';
     const opts = this.feedbackOptions?.[type];
 
@@ -286,7 +277,7 @@ class ChatWindow {
       this._submitFeedback(messageId, isPositive, [...selectedCategories], textarea.value.trim(), fbEl);
     });
     fbEl.querySelector('.wxo-feedback__cancel').addEventListener('click', () => {
-      this._renderFeedbackButtons(messageId, fbEl, messageText);
+      fbEl.innerHTML = ''; // thumbs remain in action row above
     });
 
     this._scrollToBottom();
@@ -300,12 +291,12 @@ class ChatWindow {
   _createCopyButton(text) {
     const btn = document.createElement('button');
     btn.className = 'wxo-copy-btn';
-    btn.title = 'コピー';
+    btn.dataset.tooltip = 'コピー';
     btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`;
     btn.addEventListener('click', () => {
       navigator.clipboard.writeText(text).then(() => {
-        btn.title = 'コピーしました';
-        setTimeout(() => { btn.title = 'コピー'; }, 2000);
+        btn.dataset.tooltip = 'コピーしました';
+        setTimeout(() => { btn.dataset.tooltip = 'コピー'; }, 2000);
       }).catch(() => {});
     });
     return btn;
