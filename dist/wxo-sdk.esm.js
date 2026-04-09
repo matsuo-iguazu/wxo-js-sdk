@@ -1205,7 +1205,7 @@ class WxOClient {
     return _asyncToGenerator(function* () {
       var agent = _this6.config.getAgent(agentId);
       if (!agent) return null;
-      var path = "/v1/orchestrate/agents/".concat(encodeURIComponent(agent.agentId), "/chat-starter-settings");
+      var path = "/mfe_home_archer/api/v1/orchestrate/agents/".concat(encodeURIComponent(agent.agentId), "/chat-starter-settings");
       try {
         var _data$welcome_content, _data$welcome_content2, _data$starter_prompts;
         var data = yield _this6.httpClient.get(path);
