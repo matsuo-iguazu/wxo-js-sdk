@@ -1041,7 +1041,7 @@
         const welcomeMessage = data?.welcome_content?.welcome_message || null;
         const description = data?.welcome_content?.description || null;
         const rawPrompts = data?.starter_prompts?.prompts || [];
-        const prompts = rawPrompts.filter(p => p.state === 'active').map(p => ({
+        const prompts = rawPrompts.filter(p => !p.state || p.state === 'active').map(p => ({
           title: p.title,
           prompt: p.prompt
         }));

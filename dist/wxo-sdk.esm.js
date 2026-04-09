@@ -1212,7 +1212,7 @@ class WxOClient {
         var welcomeMessage = (data === null || data === void 0 || (_data$welcome_content = data.welcome_content) === null || _data$welcome_content === void 0 ? void 0 : _data$welcome_content.welcome_message) || null;
         var description = (data === null || data === void 0 || (_data$welcome_content2 = data.welcome_content) === null || _data$welcome_content2 === void 0 ? void 0 : _data$welcome_content2.description) || null;
         var rawPrompts = (data === null || data === void 0 || (_data$starter_prompts = data.starter_prompts) === null || _data$starter_prompts === void 0 ? void 0 : _data$starter_prompts.prompts) || [];
-        var prompts = rawPrompts.filter(p => p.state === 'active').map(p => ({
+        var prompts = rawPrompts.filter(p => !p.state || p.state === 'active').map(p => ({
           title: p.title,
           prompt: p.prompt
         }));
