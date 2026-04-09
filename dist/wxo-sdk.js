@@ -1509,7 +1509,7 @@
     }
     _renderWelcomeScreen() {
       // Use API data if available, fallback to agent config
-      const greeting = this.starterSettings?.welcomeMessage || this.agent.welcomeMessage || `こんにちは！${this.agent.name}です。`;
+      const greeting = this.starterSettings?.welcomeMessage || this.agent.welcomeMessage || this.agent.name;
       const description = this.starterSettings?.description || this.agent.welcomeSubtitle || '';
       // starterSettings.prompts: [{title, prompt}]; fallback: agent.quickStartPrompts (strings)
       const prompts = this.starterSettings?.prompts || (Array.isArray(this.agent.quickStartPrompts) ? this.agent.quickStartPrompts.map(p => ({

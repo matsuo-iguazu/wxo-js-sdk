@@ -1643,7 +1643,7 @@ class ChatWindow {
   _renderWelcomeScreen() {
     var _this$starterSettings, _this$starterSettings2, _this$starterSettings3;
     // Use API data if available, fallback to agent config
-    var greeting = ((_this$starterSettings = this.starterSettings) === null || _this$starterSettings === void 0 ? void 0 : _this$starterSettings.welcomeMessage) || this.agent.welcomeMessage || "\u3053\u3093\u306B\u3061\u306F\uFF01".concat(this.agent.name, "\u3067\u3059\u3002");
+    var greeting = ((_this$starterSettings = this.starterSettings) === null || _this$starterSettings === void 0 ? void 0 : _this$starterSettings.welcomeMessage) || this.agent.welcomeMessage || this.agent.name;
     var description = ((_this$starterSettings2 = this.starterSettings) === null || _this$starterSettings2 === void 0 ? void 0 : _this$starterSettings2.description) || this.agent.welcomeSubtitle || '';
     // starterSettings.prompts: [{title, prompt}]; fallback: agent.quickStartPrompts (strings)
     var prompts = ((_this$starterSettings3 = this.starterSettings) === null || _this$starterSettings3 === void 0 ? void 0 : _this$starterSettings3.prompts) || (Array.isArray(this.agent.quickStartPrompts) ? this.agent.quickStartPrompts.map(p => ({

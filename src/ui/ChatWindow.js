@@ -315,7 +315,7 @@ class ChatWindow {
     // Use API data if available, fallback to agent config
     const greeting = this.starterSettings?.welcomeMessage
       || this.agent.welcomeMessage
-      || `こんにちは！${this.agent.name}です。`;
+      || this.agent.name;
     const description = this.starterSettings?.description
       || this.agent.welcomeSubtitle
       || '';
