@@ -171,10 +171,7 @@ class WxOClient {
     const agent = this.config.getAgent(agentId);
     if (!agent) return null;
 
-    const params = agent.agentEnvironmentId
-      ? `?environment_id=${encodeURIComponent(agent.agentEnvironmentId)}`
-      : '';
-    const path = `/v1/orchestrate/agents/${encodeURIComponent(agent.agentId)}/chat-starter-settings${params}`;
+    const path = `/v1/orchestrate/agents/${encodeURIComponent(agent.agentId)}/chat-starter-settings`;
 
     try {
       const data = await this.httpClient.get(path);
