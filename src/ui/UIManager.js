@@ -581,7 +581,7 @@ class UIManager {
         flex-shrink: 0;
       }
       .wxo-chat-input-area:focus-within {
-        box-shadow: inset 0 0 0 2px #0f62fe;
+        border-top-color: #0f62fe;
       }
       .wxo-input-wrap {
         position: relative;
@@ -606,8 +606,8 @@ class UIManager {
       }
       .wxo-chat-window .wxo-chat-input:focus {
         outline: none !important;
-        box-shadow: none !important;
         border: none !important;
+        box-shadow: inset 0 0 0 2px #0f62fe !important;
       }
       .wxo-chat-input:disabled { background: #f4f4f4; }
       .wxo-chat-send {
