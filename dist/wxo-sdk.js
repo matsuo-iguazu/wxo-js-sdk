@@ -1914,13 +1914,13 @@
         border-radius: 24px;
         padding: 10px 18px;
         cursor: pointer;
-        box-shadow: inset 0 2px 5px rgba(0,0,0,0.1), 0 1px 3px rgba(0,0,0,0.08);
+        box-shadow: 0 3px 8px rgba(0,0,0,0.12);
         white-space: nowrap;
         transform-origin: right center;
         animation: wxo-agent-rise 0.45s cubic-bezier(0.34, 1.3, 0.64, 1) both;
       }
       .wxo-agent-item:hover {
-        box-shadow: inset 0 2px 6px rgba(0,0,0,0.14), 0 1px 3px rgba(0,0,0,0.1);
+        box-shadow: 0 4px 10px rgba(0,0,0,0.18);
       }
       .wxo-agent-item__label {
         font-size: 14px;
