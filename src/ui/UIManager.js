@@ -579,6 +579,10 @@ class UIManager {
         border-top: 1px solid #e0e0e0;
         background: white;
         flex-shrink: 0;
+        transition: border-top-color 0.15s;
+      }
+      .wxo-chat-input-area:focus-within {
+        border-top-color: #0f62fe;
       }
       .wxo-input-wrap {
         position: relative;
