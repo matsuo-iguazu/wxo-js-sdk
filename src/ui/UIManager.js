@@ -255,7 +255,7 @@ class UIManager {
         display: flex;
         align-items: center;
         justify-content: flex-end;
-        background: linear-gradient(to bottom, #d4e4f7 0%, #ebf0fa 40%, #f8fbff 100%);
+        background: linear-gradient(to bottom, #ffffff 0%, #ffffff 50%, #ebf0fa 100%);
         border-radius: 24px;
         padding: 10px 18px;
         cursor: pointer;
