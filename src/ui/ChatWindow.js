@@ -430,6 +430,18 @@ class ChatWindow {
     return div.innerHTML;
   }
 
+  resetToWelcome(starterSettings) {
+    this.messages = [];
+    this.starterSettings = starterSettings;
+    if (this.messagesEl) {
+      this.messagesEl.innerHTML = '';
+      this.welcomeEl = null;
+    }
+    this._renderWelcomeScreen();
+    this._setInputDisabled(false);
+    if (this.scrollBtnEl) this.scrollBtnEl.style.display = 'none';
+  }
+
   destroy() {
     if (this.el && this.el.parentNode) {
       this.el.parentNode.removeChild(this.el);

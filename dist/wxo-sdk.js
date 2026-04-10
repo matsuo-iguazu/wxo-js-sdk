@@ -1666,6 +1666,17 @@
       div.textContent = str;
       return div.innerHTML;
     }
+    resetToWelcome(starterSettings) {
+      this.messages = [];
+      this.starterSettings = starterSettings;
+      if (this.messagesEl) {
+        this.messagesEl.innerHTML = '';
+        this.welcomeEl = null;
+      }
+      this._renderWelcomeScreen();
+      this._setInputDisabled(false);
+      if (this.scrollBtnEl) this.scrollBtnEl.style.display = 'none';
+    }
     destroy() {
       if (this.el && this.el.parentNode) {
         this.el.parentNode.removeChild(this.el);
@@ -1827,20 +1838,18 @@
     async _reloadChat() {
       if (!this.currentAgentId) return;
       const agentId = this.currentAgentId;
-
-      // Destroy the current window for this agent
       const win = this.chatWindows.get(agentId);
-      if (win) {
-        win.destroy();
-        this.chatWindows.delete(agentId);
-      }
 
-      // End the session (closes thread, clears messages in ChatManager)
+      // End the current session (closes thread, clears messages in ChatManager)
       await this.client.endChat(agentId).catch(() => {});
-      this.currentAgentId = null;
 
-      // Reopen with a fresh session
-      await this._openChat(agentId);
+      // Start new session and fetch starter settings concurrently
+      const [, starterSettings] = await Promise.all([this.client.startChat(agentId), this.client.fetchChatStarterSettings(agentId).catch(() => null)]);
+
+      // Reset the existing window in place (keep it open)
+      if (win) {
+        win.resetToWelcome(starterSettings);
+      }
     }
 
     // ─── CSS injection ──────────────────────────────────────────────────────────
@@ -2044,7 +2053,7 @@
       .wxo-message--user .wxo-message__content {
         background: #e0e0e0;
         color: #161616;
-        border-bottom-right-radius: 4px;
+        border-top-right-radius: 4px;
       }
       .wxo-message--agent .wxo-message__content {
         background: transparent;
