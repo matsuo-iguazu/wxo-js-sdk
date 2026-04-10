@@ -575,13 +575,15 @@ class UIManager {
         position: relative;
       }
       .wxo-chat-input {
+        display: block;
         width: 100%;
+        margin: 0;
         padding: 12px 52px 12px 16px;
-        border: none;
+        border: none !important;
         border-radius: 0;
         font-size: 14px;
-        outline: none;
-        box-shadow: none;
+        outline: none !important;
+        box-shadow: none !important;
         font-family: inherit;
         box-sizing: border-box;
         resize: none;
@@ -591,8 +593,9 @@ class UIManager {
         line-height: 1.5;
       }
       .wxo-chat-window .wxo-chat-input:focus {
-        outline: none;
-        box-shadow: none;
+        outline: none !important;
+        box-shadow: none !important;
+        border: none !important;
       }
       .wxo-chat-input:disabled { background: #f4f4f4; }
       .wxo-chat-send {
