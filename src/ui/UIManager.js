@@ -581,8 +581,7 @@ class UIManager {
         flex-shrink: 0;
       }
       .wxo-chat-input-area:focus-within {
-        outline: 2px solid #0f62fe;
-        outline-offset: -2px;
+        box-shadow: inset 0 0 0 2px #0f62fe;
       }
       .wxo-input-wrap {
         position: relative;
