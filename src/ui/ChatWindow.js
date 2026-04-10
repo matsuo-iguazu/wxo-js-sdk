@@ -29,22 +29,22 @@ class ChatWindow {
     this.el.innerHTML = `
       <div class="wxo-chat-header">
         <div class="wxo-chat-header__left">
-          <button class="wxo-btn-icon wxo-btn-reload" aria-label="Reload" data-tooltip="チャットのリセット">↺</button>
+          <button class="wxo-btn-icon wxo-btn-reload tooltip-below" aria-label="Reload" data-tooltip="チャットのリセット">↺</button>
           <div class="wxo-chat-header__title">
             <span class="wxo-chat-header__icon">${this.agent.icon || '💬'}</span>
             <span class="wxo-chat-header__name">${this._escapeHtml(this.agent.name)}</span>
           </div>
         </div>
         <div class="wxo-chat-header__actions">
-          <button class="wxo-btn-icon wxo-btn-resize" aria-label="Resize" data-tooltip="サイズ変更">⤢</button>
-          <button class="wxo-btn-icon wxo-btn-minimize" aria-label="Minimize" data-tooltip="最小化">−</button>
+          <button class="wxo-btn-icon wxo-btn-resize tooltip-below" aria-label="Resize" data-tooltip="サイズ変更">⤢</button>
+          <button class="wxo-btn-icon wxo-btn-minimize tooltip-below" aria-label="Minimize" data-tooltip="最小化">−</button>
         </div>
       </div>
       <div class="wxo-chat-messages"></div>
       <div class="wxo-chat-input-area">
         <div class="wxo-input-wrap">
           <textarea class="wxo-chat-input" rows="1" placeholder="何かを入力してください..."></textarea>
-          <button class="wxo-chat-send" aria-label="クリックしてメッセージを送信" title="クリックしてメッセージを送信">
+          <button class="wxo-chat-send" data-tooltip="クリックしてメッセージを送信">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" xmlns="http://www.w3.org/2000/svg">
               <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/>
             </svg>
@@ -188,10 +188,12 @@ class ChatWindow {
         fbPanelEl = document.createElement('div');
         fbPanelEl.className = 'wxo-feedback';
 
-        [['👍', true, '応答良好'], ['👎', false, '応答不良']].forEach(([emoji, isPositive, tip]) => {
+        const thumbUpSVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg>`;
+        const thumbDownSVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17"/></svg>`;
+        [[thumbUpSVG, true, '応答良好'], [thumbDownSVG, false, '応答不良']].forEach(([svg, isPositive, tip]) => {
           const btn = document.createElement('button');
           btn.className = 'wxo-feedback__btn';
-          btn.textContent = emoji;
+          btn.innerHTML = svg;
           btn.dataset.tooltip = tip;
           btn.addEventListener('click', () => this._onRatingClick(message.id, isPositive, fbPanelEl));
           actionRow.appendChild(btn);
@@ -233,7 +235,9 @@ class ChatWindow {
       return;
     }
 
-    const rating = isPositive ? '👍' : '👎';
+    const thumbUpSVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg>`;
+    const thumbDownSVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17"/></svg>`;
+    const rating = isPositive ? thumbUpSVG : thumbDownSVG;
     const categories = opts.categories || [];
     const disclaimer = opts.disclaimer || '';
 
@@ -285,7 +289,10 @@ class ChatWindow {
 
   _submitFeedback(messageId, isPositive, categories, text, fbEl) {
     this.onFeedback(messageId, isPositive, categories, text);
-    fbEl.innerHTML = `<span class="wxo-feedback__thanks">${isPositive ? '👍' : '👎'} フィードバックありがとうございます</span>`;
+    const svgIcon = isPositive
+      ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg>`
+      : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17"/></svg>`;
+    fbEl.innerHTML = `<span class="wxo-feedback__thanks">${svgIcon} フィードバックありがとうございます</span>`;
   }
 
   _createCopyButton(text) {

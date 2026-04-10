@@ -450,8 +450,8 @@ class UIManager {
         border-radius: 4px;
         padding: 3px 4px;
         cursor: pointer;
-        font-size: 16px;
-        line-height: 1;
+        display: flex;
+        align-items: center;
         transition: background 0.15s;
       }
       .wxo-feedback__btn:hover { background: #f0f0f0; }
@@ -466,14 +466,13 @@ class UIManager {
         padding: 14px 14px 0;
         max-width: 280px;
         background: white;
-        overflow: hidden;
       }
       .wxo-feedback__panel-header {
         display: flex;
         align-items: center;
         gap: 8px;
       }
-      .wxo-feedback__selected { font-size: 16px; }
+      .wxo-feedback__selected { display: flex; align-items: center; }
       .wxo-feedback__panel-title {
         font-size: 13px;
         font-weight: 700;
@@ -529,6 +528,9 @@ class UIManager {
         display: flex;
         margin: 0 -14px;
         border-top: 1px solid #e0e0e0;
+        overflow: hidden;
+        border-bottom-left-radius: 7px;
+        border-bottom-right-radius: 7px;
       }
       .wxo-feedback__cancel {
         flex: 1;
@@ -752,6 +754,17 @@ class UIManager {
       [data-tooltip]:hover::before {
         opacity: 1;
         transition-delay: 0.1s;
+      }
+      /* Tooltip below variant (for header buttons at top of window) */
+      .tooltip-below[data-tooltip]::after {
+        bottom: auto;
+        top: calc(100% + 8px);
+      }
+      .tooltip-below[data-tooltip]::before {
+        bottom: auto;
+        top: calc(100% + 4px);
+        border-top-color: transparent;
+        border-bottom-color: #161616;
       }
     `;
 
