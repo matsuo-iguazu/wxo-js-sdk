@@ -780,8 +780,9 @@ class UIManager {
         opacity: 1;
         transition-delay: 0.1s;
       }
-      /* Send button must stay absolutely positioned (overrides [data-tooltip]{position:relative}) */
+      /* These must stay absolutely positioned (overrides [data-tooltip]{position:relative}) */
       .wxo-input-wrap .wxo-chat-send { position: absolute; }
+      .wxo-chat-window .wxo-scroll-bottom { position: absolute; }
 
       /* Tooltip below variant (for header buttons at top of window) */
       .tooltip-below[data-tooltip]::after {
