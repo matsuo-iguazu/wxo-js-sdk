@@ -642,20 +642,20 @@ class UIManager {
         width: 32px;
         height: 32px;
         border-radius: 50%;
-        background: white;
-        border: 1px solid #e0e0e0;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        background: #161616;
+        border: none;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.25);
         cursor: pointer;
         display: flex;
         align-items: center;
         justify-content: center;
-        color: #525252;
-        transition: box-shadow 0.15s, color 0.15s;
+        color: #ffffff;
+        transition: box-shadow 0.15s, background 0.15s;
         z-index: 10;
       }
       .wxo-scroll-bottom:hover {
-        box-shadow: 0 3px 10px rgba(0,0,0,0.2);
-        color: #161616;
+        background: #393939;
+        box-shadow: 0 3px 10px rgba(0,0,0,0.3);
       }
 
       /* Welcome screen */
