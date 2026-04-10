@@ -450,6 +450,7 @@ class UIManager {
         border: none;
         border-radius: 4px;
         padding: 3px 4px;
+        height: 24px;
         cursor: pointer;
         display: flex;
         align-items: center;
@@ -732,6 +733,7 @@ class UIManager {
         border: none;
         border-radius: 4px;
         padding: 3px 6px;
+        height: 24px;
         cursor: pointer;
         color: #525252;
         display: flex;

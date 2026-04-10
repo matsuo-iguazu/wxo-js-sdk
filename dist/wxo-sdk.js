@@ -1272,7 +1272,7 @@
           </div>
         </div>
         <div class="wxo-chat-header__actions">
-          <button class="wxo-btn-icon wxo-btn-resize tooltip-below" aria-label="Resize" data-tooltip="サイズ変更"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polyline points="15 3 21 3 21 9"></polyline><polyline points="9 21 3 21 3 15"></polyline><line x1="21" y1="3" x2="14" y2="10"></line><line x1="3" y1="21" x2="10" y2="14"></line></svg></button>
+          <button class="wxo-btn-icon wxo-btn-resize tooltip-below" aria-label="Resize" data-tooltip="サイズ拡大する"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polyline points="15 3 21 3 21 9"></polyline><polyline points="9 21 3 21 3 15"></polyline><line x1="21" y1="3" x2="14" y2="10"></line><line x1="3" y1="21" x2="10" y2="14"></line></svg></button>
           <button class="wxo-btn-icon wxo-btn-minimize tooltip-below" aria-label="Minimize" data-tooltip="最小化">−</button>
         </div>
       </div>
@@ -1283,7 +1283,7 @@
       <div class="wxo-chat-input-area">
         <div class="wxo-input-wrap">
           <textarea class="wxo-chat-input" rows="1" placeholder="何かを入力してください..."></textarea>
-          <button class="wxo-chat-send" data-tooltip="クリックしてメッセージを送信">
+          <button class="wxo-chat-send" data-tooltip="送信">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" xmlns="http://www.w3.org/2000/svg">
               <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/>
             </svg>
@@ -1523,7 +1523,7 @@
       const btn = document.createElement('button');
       btn.className = 'wxo-copy-btn';
       btn.dataset.tooltip = 'コピー';
-      btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`;
+      btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`;
       btn.addEventListener('click', () => {
         navigator.clipboard.writeText(text).then(() => {
           btn.dataset.tooltip = 'コピーしました';
@@ -1596,7 +1596,7 @@
       this.isExpanded = !this.isExpanded;
       this.el.classList.toggle('wxo-chat-window--expanded', this.isExpanded);
       const btn = this.el.querySelector('.wxo-btn-resize');
-      btn.dataset.tooltip = this.isExpanded ? '元のサイズに戻す' : 'サイズ変更';
+      btn.dataset.tooltip = this.isExpanded ? '元のサイズに戻す' : 'サイズ拡大する';
       if (this.isExpanded) {
         // Collapse icon: arrows pointing inward
         btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polyline points="4 14 10 14 10 20"></polyline><polyline points="20 10 14 10 14 4"></polyline><line x1="10" y1="14" x2="3" y2="21"></line><line x1="21" y1="3" x2="14" y2="10"></line></svg>`;
@@ -2060,6 +2060,7 @@
         border: none;
         border-radius: 4px;
         padding: 3px 4px;
+        height: 24px;
         cursor: pointer;
         display: flex;
         align-items: center;
@@ -2342,6 +2343,7 @@
         border: none;
         border-radius: 4px;
         padding: 3px 6px;
+        height: 24px;
         cursor: pointer;
         color: #525252;
         display: flex;
