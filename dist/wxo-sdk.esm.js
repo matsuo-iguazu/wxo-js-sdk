@@ -1236,6 +1236,18 @@ class WxOClient {
         'zh-TW': '您好，歡迎使用 watsonx Orchestrate',
         'zh-CN': '您好，欢迎使用 watsonx Orchestrate'
       };
+      var defaultDescriptions = {
+        ja: '生成される回答の精度は異なる場合があります。 回答を再確認してください。',
+        en: 'Accuracy of generated answers may vary. Please double-check responses.',
+        fr: 'La précision des réponses générées peut varier. Veuillez revérifier les réponses.',
+        de: 'Die Genauigkeit generierter Antworten kann variieren. Bitte überprüfen Sie die Antworten.',
+        es: 'La precisión de las respuestas generadas puede variar. Verifique las respuestas.',
+        it: 'La precisione delle risposte generate può variare. Si prega di ricontrollare le risposte.',
+        ko: '생성된 답변의 정확도는 다를 수 있습니다. 답변을 다시 확인하세요.',
+        'pt-BR': 'A precisão das respostas geradas pode variar. Verifique as respostas.',
+        'zh-TW': '生成答案的準確性可能有所不同。請仔細確認回答。',
+        'zh-CN': '生成答案的准确性可能有所不同。请仔细确认回答。'
+      };
       if (_this6.config.isDebug()) {
         console.log("[wxo-sdk] fetchChatStarterSettings: locale=\"".concat(locale || 'none', "\", path: ").concat(path));
       }
@@ -1251,7 +1263,8 @@ class WxOClient {
         // If API returns default message, apply locale-specific default (IBM wxoLoader behavior)
         var localizedDefault = locale ? defaultWelcomeMessages[locale] || defaultWelcomeMessages['en'] : null;
         var welcomeMessage = wc !== null && wc !== void 0 && wc.is_default_message && localizedDefault ? localizedDefault : (wc === null || wc === void 0 ? void 0 : wc.welcome_message) || null;
-        var description = (wc === null || wc === void 0 ? void 0 : wc.description) || null;
+        var localizedDescription = locale ? defaultDescriptions[locale] || defaultDescriptions['en'] : null;
+        var description = wc !== null && wc !== void 0 && wc.is_default_description && localizedDescription ? localizedDescription : (wc === null || wc === void 0 ? void 0 : wc.description) || null;
         var rawPrompts = (data === null || data === void 0 || (_data$starter_prompts = data.starter_prompts) === null || _data$starter_prompts === void 0 ? void 0 : _data$starter_prompts.prompts) || [];
         var prompts = rawPrompts.filter(p => !p.state || p.state === 'active').map(p => ({
           title: p.title,
