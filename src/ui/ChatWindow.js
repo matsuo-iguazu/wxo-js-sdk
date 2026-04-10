@@ -18,6 +18,7 @@ class ChatWindow {
     this.inputEl = null;
     this.sendBtn = null;
     this.loadingEl = null;
+    this.scrollBtnEl = null;
     this.isExpanded = false;
     this.welcomeEl = null;
   }
@@ -41,6 +42,9 @@ class ChatWindow {
         </div>
       </div>
       <div class="wxo-chat-messages"></div>
+      <button class="wxo-scroll-bottom" data-tooltip="一番下へスクロール" style="display:none" aria-label="一番下へスクロール">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><polyline points="6 9 12 15 18 9"></polyline><line x1="4" y1="19" x2="20" y2="19"></line></svg>
+      </button>
       <div class="wxo-chat-input-area">
         <div class="wxo-input-wrap">
           <textarea class="wxo-chat-input" rows="1" placeholder="何かを入力してください..."></textarea>
@@ -56,6 +60,7 @@ class ChatWindow {
     this.messagesEl = this.el.querySelector('.wxo-chat-messages');
     this.inputEl = this.el.querySelector('.wxo-chat-input');
     this.sendBtn = this.el.querySelector('.wxo-chat-send');
+    this.scrollBtnEl = this.el.querySelector('.wxo-scroll-bottom');
 
     // Render existing messages or welcome screen
     if (this.messages.length > 0) {
@@ -68,6 +73,10 @@ class ChatWindow {
     this.el.querySelector('.wxo-btn-minimize').addEventListener('click', () => this.onMinimize());
     this.el.querySelector('.wxo-btn-reload').addEventListener('click', () => this.onReload());
     this.el.querySelector('.wxo-btn-resize').addEventListener('click', () => this._toggleResize());
+
+    // Scroll-to-bottom button
+    this.messagesEl.addEventListener('scroll', () => this._updateScrollBtn());
+    this.scrollBtnEl.addEventListener('click', () => this._scrollToBottom());
 
     this.sendBtn.addEventListener('click', () => this._handleSend());
     // Enter to send, Shift+Enter for newline
@@ -132,6 +141,8 @@ class ChatWindow {
         this.sendBtn.disabled = true;
       } else {
         this.sendBtn.disabled = !this.inputEl || this.inputEl.value.trim() === '';
+        // Refocus input when re-enabled (after agent response)
+        requestAnimationFrame(() => { if (this.inputEl) this.inputEl.focus(); });
       }
     }
   }
@@ -393,6 +404,13 @@ class ChatWindow {
     if (this.messagesEl) {
       this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
     }
+    if (this.scrollBtnEl) this.scrollBtnEl.style.display = 'none';
+  }
+
+  _updateScrollBtn() {
+    if (!this.scrollBtnEl || !this.messagesEl) return;
+    const atBottom = this.messagesEl.scrollHeight - this.messagesEl.scrollTop - this.messagesEl.clientHeight < 50;
+    this.scrollBtnEl.style.display = atBottom ? 'none' : 'flex';
   }
 
   _escapeHtml(str) {

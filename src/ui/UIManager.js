@@ -285,6 +285,7 @@ class UIManager {
         flex-direction: column;
         overflow: hidden;
         transition: width 0.3s, height 0.3s;
+        position: relative;
       }
       .wxo-chat-window--expanded {
         width: 620px;
@@ -612,6 +613,31 @@ class UIManager {
         cursor: pointer;
       }
       .wxo-chat-send:not(:disabled):hover { background: #393939; }
+
+      /* Scroll-to-bottom button */
+      .wxo-scroll-bottom {
+        position: absolute;
+        bottom: 66px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        background: white;
+        border: 1px solid #e0e0e0;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #525252;
+        transition: box-shadow 0.15s, color 0.15s;
+        z-index: 10;
+      }
+      .wxo-scroll-bottom:hover {
+        box-shadow: 0 3px 10px rgba(0,0,0,0.2);
+        color: #161616;
+      }
 
       /* Welcome screen */
       .wxo-welcome {

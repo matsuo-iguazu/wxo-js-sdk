@@ -1255,6 +1255,7 @@
       this.inputEl = null;
       this.sendBtn = null;
       this.loadingEl = null;
+      this.scrollBtnEl = null;
       this.isExpanded = false;
       this.welcomeEl = null;
     }
@@ -1276,6 +1277,9 @@
         </div>
       </div>
       <div class="wxo-chat-messages"></div>
+      <button class="wxo-scroll-bottom" data-tooltip="一番下へスクロール" style="display:none" aria-label="一番下へスクロール">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><polyline points="6 9 12 15 18 9"></polyline><line x1="4" y1="19" x2="20" y2="19"></line></svg>
+      </button>
       <div class="wxo-chat-input-area">
         <div class="wxo-input-wrap">
           <textarea class="wxo-chat-input" rows="1" placeholder="何かを入力してください..."></textarea>
@@ -1290,6 +1294,7 @@
       this.messagesEl = this.el.querySelector('.wxo-chat-messages');
       this.inputEl = this.el.querySelector('.wxo-chat-input');
       this.sendBtn = this.el.querySelector('.wxo-chat-send');
+      this.scrollBtnEl = this.el.querySelector('.wxo-scroll-bottom');
 
       // Render existing messages or welcome screen
       if (this.messages.length > 0) {
@@ -1302,6 +1307,10 @@
       this.el.querySelector('.wxo-btn-minimize').addEventListener('click', () => this.onMinimize());
       this.el.querySelector('.wxo-btn-reload').addEventListener('click', () => this.onReload());
       this.el.querySelector('.wxo-btn-resize').addEventListener('click', () => this._toggleResize());
+
+      // Scroll-to-bottom button
+      this.messagesEl.addEventListener('scroll', () => this._updateScrollBtn());
+      this.scrollBtnEl.addEventListener('click', () => this._scrollToBottom());
       this.sendBtn.addEventListener('click', () => this._handleSend());
       // Enter to send, Shift+Enter for newline
       this.inputEl.addEventListener('keydown', e => {
@@ -1363,6 +1372,10 @@
           this.sendBtn.disabled = true;
         } else {
           this.sendBtn.disabled = !this.inputEl || this.inputEl.value.trim() === '';
+          // Refocus input when re-enabled (after agent response)
+          requestAnimationFrame(() => {
+            if (this.inputEl) this.inputEl.focus();
+          });
         }
       }
     }
@@ -1596,6 +1609,12 @@
       if (this.messagesEl) {
         this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
       }
+      if (this.scrollBtnEl) this.scrollBtnEl.style.display = 'none';
+    }
+    _updateScrollBtn() {
+      if (!this.scrollBtnEl || !this.messagesEl) return;
+      const atBottom = this.messagesEl.scrollHeight - this.messagesEl.scrollTop - this.messagesEl.clientHeight < 50;
+      this.scrollBtnEl.style.display = atBottom ? 'none' : 'flex';
     }
     _escapeHtml(str) {
       const div = document.createElement('div');
@@ -1876,6 +1895,7 @@
         flex-direction: column;
         overflow: hidden;
         transition: width 0.3s, height 0.3s;
+        position: relative;
       }
       .wxo-chat-window--expanded {
         width: 620px;
@@ -2203,6 +2223,31 @@
         cursor: pointer;
       }
       .wxo-chat-send:not(:disabled):hover { background: #393939; }
+
+      /* Scroll-to-bottom button */
+      .wxo-scroll-bottom {
+        position: absolute;
+        bottom: 66px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        background: white;
+        border: 1px solid #e0e0e0;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #525252;
+        transition: box-shadow 0.15s, color 0.15s;
+        z-index: 10;
+      }
+      .wxo-scroll-bottom:hover {
+        box-shadow: 0 3px 10px rgba(0,0,0,0.2);
+        color: #161616;
+      }
 
       /* Welcome screen */
       .wxo-welcome {
