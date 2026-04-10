@@ -1217,27 +1217,41 @@ class WxOClient {
     return _asyncToGenerator(function* () {
       var agent = _this6.config.getAgent(agentId);
       if (!agent) return null;
+
+      // API docs: chat-starter-settings does NOT support locale query param.
+      // IBM wxoLoader handles locale client-side: when is_default_message=true, show locale-specific default.
       var locale = _this6.config.getLocale();
-      var params = locale ? "?locale=".concat(encodeURIComponent(locale)) : '';
-      var path = "/mfe_home_archer/api/v1/orchestrate/agents/".concat(encodeURIComponent(agent.agentId), "/chat-starter-settings").concat(params);
-      var headers = locale ? {
-        'Accept-Language': locale
-      } : {};
+      var path = "/mfe_home_archer/api/v1/orchestrate/agents/".concat(encodeURIComponent(agent.agentId), "/chat-starter-settings");
+
+      // Hardcoded IBM default messages by locale (mirrors wxoLoader.js behavior)
+      var defaultWelcomeMessages = {
+        ja: 'こんにちは、watsonx Orchestrateへようこそ',
+        en: 'Hello, welcome to watsonx Orchestrate',
+        fr: 'Bonjour, bienvenue sur watsonx Orchestrate',
+        de: 'Hallo, willkommen bei watsonx Orchestrate',
+        es: 'Hola, bienvenido a watsonx Orchestrate',
+        it: 'Ciao, benvenuto a watsonx Orchestrate',
+        ko: '안녕하세요, watsonx Orchestrate에 오신 것을 환영합니다',
+        'pt-BR': 'Olá, bem-vindo ao watsonx Orchestrate',
+        'zh-TW': '您好，歡迎使用 watsonx Orchestrate',
+        'zh-CN': '您好，欢迎使用 watsonx Orchestrate'
+      };
       if (_this6.config.isDebug()) {
         console.log("[wxo-sdk] fetchChatStarterSettings: locale=\"".concat(locale || 'none', "\", path: ").concat(path));
       }
       try {
-        var _data$welcome_content3, _data$welcome_content4, _data$starter_prompts;
-        var data = yield _this6.httpClient.get(path, {
-          headers
-        });
+        var _data$starter_prompts;
+        var data = yield _this6.httpClient.get(path);
+        var wc = data === null || data === void 0 ? void 0 : data.welcome_content;
         if (_this6.config.isDebug()) {
-          var _data$welcome_content, _data$welcome_content2;
-          console.log('[wxo-sdk] fetchChatStarterSettings response:', JSON.stringify(data === null || data === void 0 ? void 0 : data.welcome_content));
-          console.log('[wxo-sdk] is_default_message:', data === null || data === void 0 || (_data$welcome_content = data.welcome_content) === null || _data$welcome_content === void 0 ? void 0 : _data$welcome_content.is_default_message, '/ is_default_description:', data === null || data === void 0 || (_data$welcome_content2 = data.welcome_content) === null || _data$welcome_content2 === void 0 ? void 0 : _data$welcome_content2.is_default_description);
+          console.log('[wxo-sdk] fetchChatStarterSettings response:', JSON.stringify(wc));
+          console.log('[wxo-sdk] is_default_message:', wc === null || wc === void 0 ? void 0 : wc.is_default_message, '/ is_default_description:', wc === null || wc === void 0 ? void 0 : wc.is_default_description);
         }
-        var welcomeMessage = (data === null || data === void 0 || (_data$welcome_content3 = data.welcome_content) === null || _data$welcome_content3 === void 0 ? void 0 : _data$welcome_content3.welcome_message) || null;
-        var description = (data === null || data === void 0 || (_data$welcome_content4 = data.welcome_content) === null || _data$welcome_content4 === void 0 ? void 0 : _data$welcome_content4.description) || null;
+
+        // If API returns default message, apply locale-specific default (IBM wxoLoader behavior)
+        var localizedDefault = locale ? defaultWelcomeMessages[locale] || defaultWelcomeMessages['en'] : null;
+        var welcomeMessage = wc !== null && wc !== void 0 && wc.is_default_message && localizedDefault ? localizedDefault : (wc === null || wc === void 0 ? void 0 : wc.welcome_message) || null;
+        var description = (wc === null || wc === void 0 ? void 0 : wc.description) || null;
         var rawPrompts = (data === null || data === void 0 || (_data$starter_prompts = data.starter_prompts) === null || _data$starter_prompts === void 0 ? void 0 : _data$starter_prompts.prompts) || [];
         var prompts = rawPrompts.filter(p => !p.state || p.state === 'active').map(p => ({
           title: p.title,

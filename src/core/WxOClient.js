@@ -171,23 +171,41 @@ class WxOClient {
     const agent = this.config.getAgent(agentId);
     if (!agent) return null;
 
+    // API docs: chat-starter-settings does NOT support locale query param.
+    // IBM wxoLoader handles locale client-side: when is_default_message=true, show locale-specific default.
     const locale = this.config.getLocale();
-    const params = locale ? `?locale=${encodeURIComponent(locale)}` : '';
-    const path = `/mfe_home_archer/api/v1/orchestrate/agents/${encodeURIComponent(agent.agentId)}/chat-starter-settings${params}`;
-    const headers = locale ? { 'Accept-Language': locale } : {};
+    const path = `/mfe_home_archer/api/v1/orchestrate/agents/${encodeURIComponent(agent.agentId)}/chat-starter-settings`;
+
+    // Hardcoded IBM default messages by locale (mirrors wxoLoader.js behavior)
+    const defaultWelcomeMessages = {
+      ja: 'こんにちは、watsonx Orchestrateへようこそ',
+      en: 'Hello, welcome to watsonx Orchestrate',
+      fr: 'Bonjour, bienvenue sur watsonx Orchestrate',
+      de: 'Hallo, willkommen bei watsonx Orchestrate',
+      es: 'Hola, bienvenido a watsonx Orchestrate',
+      it: 'Ciao, benvenuto a watsonx Orchestrate',
+      ko: '안녕하세요, watsonx Orchestrate에 오신 것을 환영합니다',
+      'pt-BR': 'Olá, bem-vindo ao watsonx Orchestrate',
+      'zh-TW': '您好，歡迎使用 watsonx Orchestrate',
+      'zh-CN': '您好，欢迎使用 watsonx Orchestrate',
+    };
 
     if (this.config.isDebug()) {
       console.log(`[wxo-sdk] fetchChatStarterSettings: locale="${locale || 'none'}", path: ${path}`);
     }
 
     try {
-      const data = await this.httpClient.get(path, { headers });
+      const data = await this.httpClient.get(path);
+      const wc = data?.welcome_content;
       if (this.config.isDebug()) {
-        console.log('[wxo-sdk] fetchChatStarterSettings response:', JSON.stringify(data?.welcome_content));
-        console.log('[wxo-sdk] is_default_message:', data?.welcome_content?.is_default_message, '/ is_default_description:', data?.welcome_content?.is_default_description);
+        console.log('[wxo-sdk] fetchChatStarterSettings response:', JSON.stringify(wc));
+        console.log('[wxo-sdk] is_default_message:', wc?.is_default_message, '/ is_default_description:', wc?.is_default_description);
       }
-      const welcomeMessage = data?.welcome_content?.welcome_message || null;
-      const description = data?.welcome_content?.description || null;
+
+      // If API returns default message, apply locale-specific default (IBM wxoLoader behavior)
+      const localizedDefault = locale ? (defaultWelcomeMessages[locale] || defaultWelcomeMessages['en']) : null;
+      const welcomeMessage = (wc?.is_default_message && localizedDefault) ? localizedDefault : (wc?.welcome_message || null);
+      const description = wc?.description || null;
       const rawPrompts = data?.starter_prompts?.prompts || [];
       const prompts = rawPrompts
         .filter(p => !p.state || p.state === 'active')
