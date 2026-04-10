@@ -2247,7 +2247,7 @@
         margin: 0;
         padding: 12px 52px 12px 16px;
         border: none !important;
-        border-radius: 0;
+        border-radius: 0 0 12px 12px;
         font-size: 14px;
         outline: none !important;
         box-shadow: none !important;
