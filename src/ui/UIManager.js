@@ -532,31 +532,40 @@ class UIManager {
         overflow: hidden;
         border-bottom-left-radius: 7px;
         border-bottom-right-radius: 7px;
+        min-height: 40px;
       }
       .wxo-feedback__cancel {
         flex: 1;
         background: white;
-        border: none;
-        border-right: 1px solid #e0e0e0;
+        border: none !important;
+        border-right: 1px solid #e0e0e0 !important;
         border-radius: 0;
-        padding: 10px 12px;
+        padding: 0 12px;
+        height: 40px;
+        min-height: 40px;
         font-size: 12px;
         font-family: inherit;
         cursor: pointer;
         transition: background 0.15s;
+        box-sizing: border-box !important;
+        line-height: 40px;
       }
       .wxo-feedback__cancel:hover { background: #f4f4f4; }
       .wxo-feedback__submit {
         flex: 1;
         background: ${primaryColor};
         color: white;
-        border: none;
+        border: none !important;
         border-radius: 0;
-        padding: 10px 12px;
+        padding: 0 12px;
+        height: 40px;
+        min-height: 40px;
         font-size: 12px;
         font-family: inherit;
         cursor: pointer;
         transition: background 0.15s;
+        box-sizing: border-box !important;
+        line-height: 40px;
       }
       .wxo-feedback__submit:hover { background: #0043ce; }
       .wxo-feedback__thanks {
