@@ -1049,13 +1049,19 @@
       const locale = this.config.getLocale();
       const params = locale ? `?locale=${encodeURIComponent(locale)}` : '';
       const path = `/mfe_home_archer/api/v1/orchestrate/agents/${encodeURIComponent(agent.agentId)}/chat-starter-settings${params}`;
+      const headers = locale ? {
+        'Accept-Language': locale
+      } : {};
       if (this.config.isDebug()) {
         console.log(`[wxo-sdk] fetchChatStarterSettings: locale="${locale || 'none'}", path: ${path}`);
       }
       try {
-        const data = await this.httpClient.get(path);
+        const data = await this.httpClient.get(path, {
+          headers
+        });
         if (this.config.isDebug()) {
           console.log('[wxo-sdk] fetchChatStarterSettings response:', JSON.stringify(data?.welcome_content));
+          console.log('[wxo-sdk] is_default_message:', data?.welcome_content?.is_default_message, '/ is_default_description:', data?.welcome_content?.is_default_description);
         }
         const welcomeMessage = data?.welcome_content?.welcome_message || null;
         const description = data?.welcome_content?.description || null;

@@ -1220,17 +1220,24 @@ class WxOClient {
       var locale = _this6.config.getLocale();
       var params = locale ? "?locale=".concat(encodeURIComponent(locale)) : '';
       var path = "/mfe_home_archer/api/v1/orchestrate/agents/".concat(encodeURIComponent(agent.agentId), "/chat-starter-settings").concat(params);
+      var headers = locale ? {
+        'Accept-Language': locale
+      } : {};
       if (_this6.config.isDebug()) {
         console.log("[wxo-sdk] fetchChatStarterSettings: locale=\"".concat(locale || 'none', "\", path: ").concat(path));
       }
       try {
-        var _data$welcome_content, _data$welcome_content2, _data$starter_prompts;
-        var data = yield _this6.httpClient.get(path);
+        var _data$welcome_content3, _data$welcome_content4, _data$starter_prompts;
+        var data = yield _this6.httpClient.get(path, {
+          headers
+        });
         if (_this6.config.isDebug()) {
+          var _data$welcome_content, _data$welcome_content2;
           console.log('[wxo-sdk] fetchChatStarterSettings response:', JSON.stringify(data === null || data === void 0 ? void 0 : data.welcome_content));
+          console.log('[wxo-sdk] is_default_message:', data === null || data === void 0 || (_data$welcome_content = data.welcome_content) === null || _data$welcome_content === void 0 ? void 0 : _data$welcome_content.is_default_message, '/ is_default_description:', data === null || data === void 0 || (_data$welcome_content2 = data.welcome_content) === null || _data$welcome_content2 === void 0 ? void 0 : _data$welcome_content2.is_default_description);
         }
-        var welcomeMessage = (data === null || data === void 0 || (_data$welcome_content = data.welcome_content) === null || _data$welcome_content === void 0 ? void 0 : _data$welcome_content.welcome_message) || null;
-        var description = (data === null || data === void 0 || (_data$welcome_content2 = data.welcome_content) === null || _data$welcome_content2 === void 0 ? void 0 : _data$welcome_content2.description) || null;
+        var welcomeMessage = (data === null || data === void 0 || (_data$welcome_content3 = data.welcome_content) === null || _data$welcome_content3 === void 0 ? void 0 : _data$welcome_content3.welcome_message) || null;
+        var description = (data === null || data === void 0 || (_data$welcome_content4 = data.welcome_content) === null || _data$welcome_content4 === void 0 ? void 0 : _data$welcome_content4.description) || null;
         var rawPrompts = (data === null || data === void 0 || (_data$starter_prompts = data.starter_prompts) === null || _data$starter_prompts === void 0 ? void 0 : _data$starter_prompts.prompts) || [];
         var prompts = rawPrompts.filter(p => !p.state || p.state === 'active').map(p => ({
           title: p.title,
