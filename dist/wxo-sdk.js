@@ -1318,8 +1318,8 @@
         <div class="wxo-input-wrap">
           <textarea class="wxo-chat-input" rows="1" placeholder="何かを入力してください..."></textarea>
           <button class="wxo-chat-send" data-tooltip="送信">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" xmlns="http://www.w3.org/2000/svg">
-              <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/>
+            <svg viewBox="0 0 32 32" fill="currentColor" width="16" height="16" xmlns="http://www.w3.org/2000/svg">
+              <path d="M27.45,15.11l-22-11a1,1,0,0,0-1.08.12,1,1,0,0,0-.33,1L7,16,4,26.74A1,1,0,0,0,5,28a1,1,0,0,0,.45-.11l22-11a1,1,0,0,0,0-1.78Zm-20.9,10L8.76,17H18V15H8.76L6.55,6.89,24.76,16Z"/>
             </svg>
           </button>
         </div>
