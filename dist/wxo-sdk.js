@@ -1910,7 +1910,7 @@
         display: flex;
         align-items: center;
         justify-content: flex-end;
-        background: linear-gradient(to bottom, #ffffff 0%, #ffffff 50%, #ebf0fa 100%);
+        background: #ebf0fa;
         border-radius: 24px;
         padding: 10px 18px;
         cursor: pointer;
