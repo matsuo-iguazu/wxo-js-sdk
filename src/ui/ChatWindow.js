@@ -295,7 +295,18 @@ class ChatWindow {
       fbEl.innerHTML = ''; // thumbs remain in action row above
     });
 
-    requestAnimationFrame(() => this._scrollToBottom());
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const actionsEl = fbEl.querySelector('.wxo-feedback__panel-actions');
+        if (actionsEl && this.messagesEl) {
+          const panelBottom = actionsEl.getBoundingClientRect().bottom;
+          const containerBottom = this.messagesEl.getBoundingClientRect().bottom;
+          if (panelBottom > containerBottom) {
+            this.messagesEl.scrollTop += panelBottom - containerBottom + 8;
+          }
+        }
+      });
+    });
   }
 
   _submitFeedback(messageId, isPositive, categories, text, fbEl) {
