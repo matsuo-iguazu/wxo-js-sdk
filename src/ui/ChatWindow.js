@@ -29,14 +29,14 @@ class ChatWindow {
     this.el.innerHTML = `
       <div class="wxo-chat-header">
         <div class="wxo-chat-header__left">
-          <button class="wxo-btn-icon wxo-btn-reload tooltip-below" aria-label="Reload" data-tooltip="チャットのリセット">↺</button>
+          <button class="wxo-btn-icon wxo-btn-reload tooltip-below" aria-label="Reload" data-tooltip="リセット">↺</button>
           <div class="wxo-chat-header__title">
             <span class="wxo-chat-header__icon">${this.agent.icon || '💬'}</span>
             <span class="wxo-chat-header__name">${this._escapeHtml(this.agent.name)}</span>
           </div>
         </div>
         <div class="wxo-chat-header__actions">
-          <button class="wxo-btn-icon wxo-btn-resize tooltip-below" aria-label="Resize" data-tooltip="サイズ変更">⤢</button>
+          <button class="wxo-btn-icon wxo-btn-resize tooltip-below" aria-label="Resize" data-tooltip="サイズ変更"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polyline points="15 3 21 3 21 9"></polyline><polyline points="9 21 3 21 3 15"></polyline><line x1="21" y1="3" x2="14" y2="10"></line><line x1="3" y1="21" x2="10" y2="14"></line></svg></button>
           <button class="wxo-btn-icon wxo-btn-minimize tooltip-below" aria-label="Minimize" data-tooltip="最小化">−</button>
         </div>
       </div>
@@ -284,7 +284,7 @@ class ChatWindow {
       fbEl.innerHTML = ''; // thumbs remain in action row above
     });
 
-    this._scrollToBottom();
+    requestAnimationFrame(() => this._scrollToBottom());
   }
 
   _submitFeedback(messageId, isPositive, categories, text, fbEl) {
@@ -339,11 +339,6 @@ class ChatWindow {
     }
 
     if (prompts.length > 0) {
-      const labelEl = document.createElement('div');
-      labelEl.className = 'wxo-welcome__prompts-label';
-      labelEl.textContent = '質問例';
-      this.welcomeEl.appendChild(labelEl);
-
       const promptsEl = document.createElement('div');
       promptsEl.className = 'wxo-welcome__prompts';
       prompts.forEach(({ title, prompt }) => {
@@ -384,7 +379,14 @@ class ChatWindow {
     this.isExpanded = !this.isExpanded;
     this.el.classList.toggle('wxo-chat-window--expanded', this.isExpanded);
     const btn = this.el.querySelector('.wxo-btn-resize');
-    btn.textContent = this.isExpanded ? '⤡' : '⤢';
+    btn.dataset.tooltip = this.isExpanded ? '元のサイズに戻す' : 'サイズ変更';
+    if (this.isExpanded) {
+      // Collapse icon: arrows pointing inward
+      btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polyline points="4 14 10 14 10 20"></polyline><polyline points="20 10 14 10 14 4"></polyline><line x1="10" y1="14" x2="3" y2="21"></line><line x1="21" y1="3" x2="14" y2="10"></line></svg>`;
+    } else {
+      // Expand icon: arrows pointing outward
+      btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polyline points="15 3 21 3 21 9"></polyline><polyline points="9 21 3 21 3 15"></polyline><line x1="21" y1="3" x2="14" y2="10"></line><line x1="3" y1="21" x2="10" y2="14"></line></svg>`;
+    }
   }
 
   _scrollToBottom() {

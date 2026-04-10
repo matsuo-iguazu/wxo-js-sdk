@@ -175,8 +175,15 @@ class WxOClient {
     const params = locale ? `?locale=${encodeURIComponent(locale)}` : '';
     const path = `/mfe_home_archer/api/v1/orchestrate/agents/${encodeURIComponent(agent.agentId)}/chat-starter-settings${params}`;
 
+    if (this.config.isDebug()) {
+      console.log(`[wxo-sdk] fetchChatStarterSettings: locale="${locale || 'none'}", path: ${path}`);
+    }
+
     try {
       const data = await this.httpClient.get(path);
+      if (this.config.isDebug()) {
+        console.log('[wxo-sdk] fetchChatStarterSettings response:', JSON.stringify(data?.welcome_content));
+      }
       const welcomeMessage = data?.welcome_content?.welcome_message || null;
       const description = data?.welcome_content?.description || null;
       const rawPrompts = data?.starter_prompts?.prompts || [];

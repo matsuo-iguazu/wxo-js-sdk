@@ -464,7 +464,6 @@ class UIManager {
         border: 1px solid #e0e0e0;
         border-radius: 8px;
         padding: 14px 14px 0;
-        max-width: 280px;
         background: white;
       }
       .wxo-feedback__panel-header {
@@ -565,7 +564,7 @@ class UIManager {
 
       /* Input area */
       .wxo-chat-input-area {
-        padding: 12px;
+        padding: 8px;
         border-top: 1px solid #e0e0e0;
         background: white;
         flex-shrink: 0;
@@ -625,11 +624,11 @@ class UIManager {
         overflow-y: auto;
       }
       .wxo-welcome__greeting {
-        font-size: 18px;
-        font-weight: 700;
+        font-size: 28px;
+        font-weight: 400;
         color: #161616;
         margin-bottom: 8px;
-        line-height: 1.3;
+        line-height: 1.25;
       }
       .wxo-welcome__description {
         font-size: 13px;
@@ -755,6 +754,9 @@ class UIManager {
         opacity: 1;
         transition-delay: 0.1s;
       }
+      /* Send button must stay absolutely positioned (overrides [data-tooltip]{position:relative}) */
+      .wxo-input-wrap .wxo-chat-send { position: absolute; }
+
       /* Tooltip below variant (for header buttons at top of window) */
       .tooltip-below[data-tooltip]::after {
         bottom: auto;

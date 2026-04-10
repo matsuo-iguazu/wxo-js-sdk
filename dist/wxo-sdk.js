@@ -1049,8 +1049,14 @@
       const locale = this.config.getLocale();
       const params = locale ? `?locale=${encodeURIComponent(locale)}` : '';
       const path = `/mfe_home_archer/api/v1/orchestrate/agents/${encodeURIComponent(agent.agentId)}/chat-starter-settings${params}`;
+      if (this.config.isDebug()) {
+        console.log(`[wxo-sdk] fetchChatStarterSettings: locale="${locale || 'none'}", path: ${path}`);
+      }
       try {
         const data = await this.httpClient.get(path);
+        if (this.config.isDebug()) {
+          console.log('[wxo-sdk] fetchChatStarterSettings response:', JSON.stringify(data?.welcome_content));
+        }
         const welcomeMessage = data?.welcome_content?.welcome_message || null;
         const description = data?.welcome_content?.description || null;
         const rawPrompts = data?.starter_prompts?.prompts || [];
@@ -1258,14 +1264,14 @@
       this.el.innerHTML = `
       <div class="wxo-chat-header">
         <div class="wxo-chat-header__left">
-          <button class="wxo-btn-icon wxo-btn-reload tooltip-below" aria-label="Reload" data-tooltip="チャットのリセット">↺</button>
+          <button class="wxo-btn-icon wxo-btn-reload tooltip-below" aria-label="Reload" data-tooltip="リセット">↺</button>
           <div class="wxo-chat-header__title">
             <span class="wxo-chat-header__icon">${this.agent.icon || '💬'}</span>
             <span class="wxo-chat-header__name">${this._escapeHtml(this.agent.name)}</span>
           </div>
         </div>
         <div class="wxo-chat-header__actions">
-          <button class="wxo-btn-icon wxo-btn-resize tooltip-below" aria-label="Resize" data-tooltip="サイズ変更">⤢</button>
+          <button class="wxo-btn-icon wxo-btn-resize tooltip-below" aria-label="Resize" data-tooltip="サイズ変更"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polyline points="15 3 21 3 21 9"></polyline><polyline points="9 21 3 21 3 15"></polyline><line x1="21" y1="3" x2="14" y2="10"></line><line x1="3" y1="21" x2="10" y2="14"></line></svg></button>
           <button class="wxo-btn-icon wxo-btn-minimize tooltip-below" aria-label="Minimize" data-tooltip="最小化">−</button>
         </div>
       </div>
@@ -1493,7 +1499,7 @@
       fbEl.querySelector('.wxo-feedback__cancel').addEventListener('click', () => {
         fbEl.innerHTML = ''; // thumbs remain in action row above
       });
-      this._scrollToBottom();
+      requestAnimationFrame(() => this._scrollToBottom());
     }
     _submitFeedback(messageId, isPositive, categories, text, fbEl) {
       this.onFeedback(messageId, isPositive, categories, text);
@@ -1537,10 +1543,6 @@
         this.welcomeEl.appendChild(descEl);
       }
       if (prompts.length > 0) {
-        const labelEl = document.createElement('div');
-        labelEl.className = 'wxo-welcome__prompts-label';
-        labelEl.textContent = '質問例';
-        this.welcomeEl.appendChild(labelEl);
         const promptsEl = document.createElement('div');
         promptsEl.className = 'wxo-welcome__prompts';
         prompts.forEach(({
@@ -1581,7 +1583,14 @@
       this.isExpanded = !this.isExpanded;
       this.el.classList.toggle('wxo-chat-window--expanded', this.isExpanded);
       const btn = this.el.querySelector('.wxo-btn-resize');
-      btn.textContent = this.isExpanded ? '⤡' : '⤢';
+      btn.dataset.tooltip = this.isExpanded ? '元のサイズに戻す' : 'サイズ変更';
+      if (this.isExpanded) {
+        // Collapse icon: arrows pointing inward
+        btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polyline points="4 14 10 14 10 20"></polyline><polyline points="20 10 14 10 14 4"></polyline><line x1="10" y1="14" x2="3" y2="21"></line><line x1="21" y1="3" x2="14" y2="10"></line></svg>`;
+      } else {
+        // Expand icon: arrows pointing outward
+        btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polyline points="15 3 21 3 21 9"></polyline><polyline points="9 21 3 21 3 15"></polyline><line x1="21" y1="3" x2="14" y2="10"></line><line x1="3" y1="21" x2="10" y2="14"></line></svg>`;
+      }
     }
     _scrollToBottom() {
       if (this.messagesEl) {
@@ -2046,7 +2055,6 @@
         border: 1px solid #e0e0e0;
         border-radius: 8px;
         padding: 14px 14px 0;
-        max-width: 280px;
         background: white;
       }
       .wxo-feedback__panel-header {
@@ -2147,7 +2155,7 @@
 
       /* Input area */
       .wxo-chat-input-area {
-        padding: 12px;
+        padding: 8px;
         border-top: 1px solid #e0e0e0;
         background: white;
         flex-shrink: 0;
@@ -2207,11 +2215,11 @@
         overflow-y: auto;
       }
       .wxo-welcome__greeting {
-        font-size: 18px;
-        font-weight: 700;
+        font-size: 28px;
+        font-weight: 400;
         color: #161616;
         margin-bottom: 8px;
-        line-height: 1.3;
+        line-height: 1.25;
       }
       .wxo-welcome__description {
         font-size: 13px;
@@ -2337,6 +2345,9 @@
         opacity: 1;
         transition-delay: 0.1s;
       }
+      /* Send button must stay absolutely positioned (overrides [data-tooltip]{position:relative}) */
+      .wxo-input-wrap .wxo-chat-send { position: absolute; }
+
       /* Tooltip below variant (for header buttons at top of window) */
       .tooltip-below[data-tooltip]::after {
         bottom: auto;
