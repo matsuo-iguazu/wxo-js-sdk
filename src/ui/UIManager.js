@@ -612,7 +612,7 @@ class UIManager {
       .wxo-chat-input:disabled { background: #f4f4f4; }
       .wxo-chat-send {
         position: absolute;
-        right: 6px;
+        right: 10px;
         bottom: 11px;
         width: 30px;
         height: 30px;
