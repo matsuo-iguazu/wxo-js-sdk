@@ -2366,6 +2366,7 @@
         background: #161616;
         color: #ffffff;
         font-size: 11px;
+        line-height: 1;
         padding: 4px 8px;
         border-radius: 4px;
         white-space: nowrap;
