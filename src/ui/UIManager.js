@@ -581,6 +581,7 @@ class UIManager {
         border-radius: 0;
         font-size: 14px;
         outline: none;
+        box-shadow: none;
         font-family: inherit;
         box-sizing: border-box;
         resize: none;
@@ -589,11 +590,15 @@ class UIManager {
         max-height: 160px;
         line-height: 1.5;
       }
+      .wxo-chat-window .wxo-chat-input:focus {
+        outline: none;
+        box-shadow: none;
+      }
       .wxo-chat-input:disabled { background: #f4f4f4; }
       .wxo-chat-send {
         position: absolute;
         right: 6px;
-        bottom: 6px;
+        bottom: 11px;
         width: 30px;
         height: 30px;
         background: #c6c6c6;
