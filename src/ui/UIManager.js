@@ -343,7 +343,7 @@ class UIManager {
       .wxo-chat-messages {
         flex: 1;
         overflow-y: auto;
-        padding: 16px;
+        padding: 16px 16px 24px;
         background: linear-gradient(to bottom, #ffffff 0%, #ffffff 50%, #ebf0fa 100%);
         display: flex;
         flex-direction: column;
@@ -566,7 +566,7 @@ class UIManager {
 
       /* Input area */
       .wxo-chat-input-area {
-        padding: 8px;
+        padding: 0;
         border-top: 1px solid #e0e0e0;
         background: white;
         flex-shrink: 0;
@@ -576,21 +576,19 @@ class UIManager {
       }
       .wxo-chat-input {
         width: 100%;
-        padding: 10px 46px 10px 14px;
-        border: 1px solid #c6c6c6;
-        border-radius: 8px;
+        padding: 12px 52px 12px 16px;
+        border: none;
+        border-radius: 0;
         font-size: 14px;
         outline: none;
         font-family: inherit;
         box-sizing: border-box;
         resize: none;
         overflow-y: hidden;
-        min-height: 42px;
+        min-height: 52px;
         max-height: 160px;
         line-height: 1.5;
-        transition: border-color 0.15s;
       }
-      .wxo-chat-input:focus { border-color: ${primaryColor}; }
       .wxo-chat-input:disabled { background: #f4f4f4; }
       .wxo-chat-send {
         position: absolute;
