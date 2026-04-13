@@ -165,6 +165,7 @@ class ChatWindow {
 
     const contentEl = document.createElement('div');
     contentEl.className = 'wxo-message__content';
+    contentEl.style.whiteSpace = 'pre-wrap';
     div.appendChild(contentEl);
 
     this.messagesEl.appendChild(div);
@@ -180,6 +181,7 @@ class ChatWindow {
     const messageId = this._streamMessageId;
 
     if (contentEl) {
+      contentEl.style.whiteSpace = '';
       if (typeof window.marked !== 'undefined') {
         contentEl.innerHTML = window.marked.parse(fullText || '');
       } else {
