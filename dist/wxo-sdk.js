@@ -1770,11 +1770,11 @@
           btn.appendChild(textSpan);
           btn.appendChild(arrowSpan);
           btn.addEventListener('click', () => {
-            if (this.inputEl) {
+            if (this.inputEl && !this.inputEl.disabled) {
               this.inputEl.value = prompt;
               this.sendBtn.disabled = false;
-              this.inputEl.focus();
               this._resizeInput();
+              this._handleSend();
             }
           });
           promptsEl.appendChild(btn);
