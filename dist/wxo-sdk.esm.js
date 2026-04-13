@@ -581,6 +581,7 @@ class ChatManager {
     this.sessions = new Map(); // agentId -> session data
     this.currentAgentId = null;
     this.messageHandlers = [];
+    this.deltaHandlers = [];
     this.errorHandlers = [];
   }
 
@@ -736,6 +737,8 @@ class ChatManager {
       var decoder = new TextDecoder();
       var buffer = '';
       var agentText = '';
+      var messageId = _this6._generateMessageId();
+      var isFirstDelta = true;
       try {
         while (true) {
           var {
@@ -755,6 +758,13 @@ class ChatManager {
           for (var line of lines) {
             _this6._processStreamLine(line, text => {
               agentText += text;
+              _this6._triggerDeltaHandlers({
+                messageId,
+                text,
+                isFirst: isFirstDelta,
+                isDone: false
+              });
+              isFirstDelta = false;
             });
           }
         }
@@ -766,16 +776,32 @@ class ChatManager {
           }
           _this6._processStreamLine(buffer, text => {
             agentText += text;
+            _this6._triggerDeltaHandlers({
+              messageId,
+              text,
+              isFirst: isFirstDelta,
+              isDone: false
+            });
+            isFirstDelta = false;
           });
         }
       } finally {
         reader.releaseLock();
       }
 
-      // Emit the complete agent message
+      // Signal stream complete
+      _this6._triggerDeltaHandlers({
+        messageId,
+        text: '',
+        isFirst: false,
+        isDone: true,
+        fullText: agentText
+      });
+
+      // Emit the complete agent message (for session history and non-streaming consumers)
       if (agentText) {
         var agentMessage = {
-          id: _this6._generateMessageId(),
+          id: messageId,
           text: agentText,
           sender: 'agent',
           timestamp: Date.now()
@@ -836,25 +862,15 @@ class ChatManager {
         var _parsed$data;
         var content = (_parsed$data = parsed.data) === null || _parsed$data === void 0 || (_parsed$data = _parsed$data.delta) === null || _parsed$data === void 0 ? void 0 : _parsed$data.content;
         if (Array.isArray(content)) {
-          return content.filter(c => c.response_type === 'text' || c.type === 'text').map(c => {
+          // No type filter — extract text from any content item to handle varying API formats
+          return content.map(c => {
             var _c$text$value, _c$text;
             return typeof c.text === 'string' ? c.text : (_c$text$value = (_c$text = c.text) === null || _c$text === void 0 ? void 0 : _c$text.value) !== null && _c$text$value !== void 0 ? _c$text$value : '';
-          }).join('');
+          }).filter(t => t.length > 0).join('');
         }
         if (typeof content === 'string') return content;
       }
-      // message.completed: fallback for full final text
-      if (parsed.event === 'message.completed') {
-        var _parsed$data$content, _parsed$data2, _parsed$data3;
-        var _content = (_parsed$data$content = (_parsed$data2 = parsed.data) === null || _parsed$data2 === void 0 ? void 0 : _parsed$data2.content) !== null && _parsed$data$content !== void 0 ? _parsed$data$content : (_parsed$data3 = parsed.data) === null || _parsed$data3 === void 0 || (_parsed$data3 = _parsed$data3.delta) === null || _parsed$data3 === void 0 ? void 0 : _parsed$data3.content;
-        if (Array.isArray(_content)) {
-          return _content.filter(c => c.response_type === 'text' || c.type === 'text').map(c => {
-            var _c$text$value2, _c$text2;
-            return typeof c.text === 'string' ? c.text : (_c$text$value2 = (_c$text2 = c.text) === null || _c$text2 === void 0 ? void 0 : _c$text2.value) !== null && _c$text$value2 !== void 0 ? _c$text$value2 : '';
-          }).join('');
-        }
-      }
-      return null; // all other events (run.started, run.completed, etc.)
+      return null; // message.completed and all other events — text comes from message.delta only
     }
 
     // Fallback for other formats
@@ -973,11 +989,20 @@ class ChatManager {
   }
 
   /**
-   * Register message handler
+   * Register message handler (called once with complete message after stream ends)
    * @param {Function} handler
    */
   onMessage(handler) {
     this.messageHandlers.push(handler);
+  }
+
+  /**
+   * Register delta handler for streaming incremental text
+   * Called with {messageId, text, isFirst, isDone, fullText}
+   * @param {Function} handler
+   */
+  onDelta(handler) {
+    this.deltaHandlers.push(handler);
   }
 
   /**
@@ -995,6 +1020,17 @@ class ChatManager {
         h(message);
       } catch (e) {
         console.error('[wxo-sdk] Message handler error:', e);
+      }
+    });
+  }
+
+  /** @private */
+  _triggerDeltaHandlers(delta) {
+    this.deltaHandlers.forEach(h => {
+      try {
+        h(delta);
+      } catch (e) {
+        console.error('[wxo-sdk] Delta handler error:', e);
       }
     });
   }
@@ -1024,6 +1060,7 @@ class ChatManager {
     }
     this.sessions.clear();
     this.messageHandlers = [];
+    this.deltaHandlers = [];
     this.errorHandlers = [];
     this.currentAgentId = null;
   }
@@ -1199,6 +1236,15 @@ class WxOClient {
   }
 
   /**
+   * Register delta handler for streaming incremental text
+   * @param {Function} handler
+   */
+  onDelta(handler) {
+    this._ensureInitialized();
+    this.chatManager.onDelta(handler);
+  }
+
+  /**
    * Register error handler
    * @param {Function} handler
    */
@@ -1351,7 +1397,7 @@ class FloatingButton {
     this.el = document.createElement('div');
     this.el.className = 'wxo-floating-btn';
     this.el.setAttribute('aria-label', 'Open chat');
-    this.el.innerHTML = "\n      <svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 32 32\" fill=\"white\" width=\"28\" height=\"28\">\n        <path d=\"M16 2C8.3 2 2 8.3 2 16s6.3 14 14 14c2.3 0 4.5-.6 6.5-1.6L28 30l-1.6-5.5C27.4 22.5 30 19.4 30 16 30 8.3 23.7 2 16 2zm0 26c-6.6 0-12-5.4-12-12S9.4 4 16 4s12 5.4 12 12-5.4 12-12 12z\"/>\n        <path d=\"M9 13h14v2H9zm0 4h10v2H9z\"/>\n      </svg>\n    ";
+    this.el.innerHTML = "<span style=\"color:white;font-size:18px;font-weight:700;letter-spacing:0.5px;font-family:'IBM Plex Sans',-apple-system,sans-serif;\">AI</span>";
     this.el.addEventListener('click', this.onClick);
     container.appendChild(this.el);
   }
@@ -1461,6 +1507,8 @@ class ChatWindow {
     this.inputEl = null;
     this.sendBtn = null;
     this.loadingEl = null;
+    this.streamingEl = null;
+    this._streamMessageId = null;
     this.scrollBtnEl = null;
     this.isExpanded = false;
     this.welcomeEl = null;
@@ -1508,6 +1556,12 @@ class ChatWindow {
     this._scrollToBottom();
   }
   addMessage(message) {
+    // If already rendered via streamDelta, just update state (avoid duplicate DOM)
+    if (message.id && this.messagesEl && this.messagesEl.querySelector("[data-message-id=\"".concat(message.id, "\"]"))) {
+      this.messages.push(message);
+      if (message.sender === 'agent') this._setInputDisabled(false);
+      return;
+    }
     this._hideLoading();
     this._hideWelcomeScreen();
     this.messages.push(message);
@@ -1516,6 +1570,104 @@ class ChatWindow {
     if (message.sender === 'agent') {
       this._setInputDisabled(false);
     }
+  }
+
+  /**
+   * Handle incoming streaming delta from ChatManager.
+   * Appends text directly as it arrives; finalizes with Markdown on isDone.
+   * @param {{messageId, text, isFirst, isDone, fullText}} delta
+   */
+  streamDelta(delta) {
+    var {
+      messageId,
+      text,
+      isFirst,
+      isDone,
+      fullText
+    } = delta;
+    if (isFirst && !this.streamingEl) {
+      this._createStreamingBubble(messageId);
+    }
+    if (!isDone && text && this.streamingEl) {
+      var contentEl = this.streamingEl.querySelector('.wxo-message__content');
+      if (contentEl) contentEl.textContent += text;
+      this._scrollToBottomIfNear();
+    }
+    if (isDone) {
+      if (!this.streamingEl && fullText) {
+        this._createStreamingBubble(messageId);
+      }
+      this._finalizeStreaming(fullText || '');
+    }
+  }
+
+  /** @private */
+  _createStreamingBubble(messageId) {
+    this._hideLoading();
+    this._hideWelcomeScreen();
+    var div = document.createElement('div');
+    div.className = 'wxo-message wxo-message--agent';
+    div.dataset.messageId = messageId;
+    var metaEl = document.createElement('div');
+    metaEl.className = 'wxo-message__meta';
+    var nameSpan = document.createElement('span');
+    nameSpan.className = 'wxo-message__meta-name';
+    nameSpan.textContent = this.agent.name;
+    var timeSpan = document.createElement('span');
+    timeSpan.className = 'wxo-message__meta-time';
+    timeSpan.textContent = new Date().toLocaleTimeString('ja-JP', {
+      hour: 'numeric',
+      minute: '2-digit'
+    });
+    metaEl.appendChild(nameSpan);
+    metaEl.appendChild(timeSpan);
+    div.appendChild(metaEl);
+    var contentEl = document.createElement('div');
+    contentEl.className = 'wxo-message__content';
+    div.appendChild(contentEl);
+    this.messagesEl.appendChild(div);
+    this.streamingEl = div;
+    this._streamMessageId = messageId;
+    this._scrollToBottom();
+  }
+
+  /** @private */
+  _finalizeStreaming(fullText) {
+    if (!this.streamingEl) return;
+    var contentEl = this.streamingEl.querySelector('.wxo-message__content');
+    var messageId = this._streamMessageId;
+    if (contentEl) {
+      if (typeof window.marked !== 'undefined') {
+        contentEl.innerHTML = window.marked.parse(fullText || '');
+      } else {
+        contentEl.textContent = fullText || '';
+      }
+    }
+
+    // Add action row (copy + feedback)
+    var actionRow = document.createElement('div');
+    actionRow.className = 'wxo-message__actions';
+    var fbPanelEl = null;
+    if (this.feedbackEnabled && messageId && this.onFeedback) {
+      fbPanelEl = document.createElement('div');
+      fbPanelEl.className = 'wxo-feedback';
+      var thumbUpSVG = "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" width=\"16\" height=\"16\"><path d=\"M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3\"/></svg>";
+      var thumbDownSVG = "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" width=\"16\" height=\"16\"><path d=\"M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17\"/></svg>";
+      [[thumbUpSVG, true, '応答良好'], [thumbDownSVG, false, '応答不良']].forEach(_ref2 => {
+        var [svg, isPositive, tip] = _ref2;
+        var btn = document.createElement('button');
+        btn.className = 'wxo-feedback__btn';
+        btn.innerHTML = svg;
+        btn.dataset.tooltip = tip;
+        btn.addEventListener('click', () => this._onRatingClick(messageId, isPositive, fbPanelEl));
+        actionRow.appendChild(btn);
+      });
+    }
+    actionRow.appendChild(this._createCopyButton(fullText || ''));
+    this.streamingEl.appendChild(actionRow);
+    if (fbPanelEl) this.streamingEl.appendChild(fbPanelEl);
+    this.streamingEl = null;
+    this._scrollToBottom();
   }
   _handleSend() {
     if (!this.inputEl || this.sendBtn.disabled) return;
@@ -1610,8 +1762,8 @@ class ChatWindow {
         fbPanelEl.className = 'wxo-feedback';
         var thumbUpSVG = "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" width=\"16\" height=\"16\"><path d=\"M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3\"/></svg>";
         var thumbDownSVG = "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" width=\"16\" height=\"16\"><path d=\"M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17\"/></svg>";
-        [[thumbUpSVG, true, '応答良好'], [thumbDownSVG, false, '応答不良']].forEach(_ref2 => {
-          var [svg, isPositive, tip] = _ref2;
+        [[thumbUpSVG, true, '応答良好'], [thumbDownSVG, false, '応答不良']].forEach(_ref3 => {
+          var [svg, isPositive, tip] = _ref3;
           var btn = document.createElement('button');
           btn.className = 'wxo-feedback__btn';
           btn.innerHTML = svg;
@@ -1736,11 +1888,11 @@ class ChatWindow {
     if (prompts.length > 0) {
       var promptsEl = document.createElement('div');
       promptsEl.className = 'wxo-welcome__prompts';
-      prompts.forEach(_ref3 => {
+      prompts.forEach(_ref4 => {
         var {
           title,
           prompt
-        } = _ref3;
+        } = _ref4;
         var btn = document.createElement('button');
         btn.className = 'wxo-welcome__prompt';
         var textSpan = document.createElement('span');
@@ -1790,6 +1942,17 @@ class ChatWindow {
     }
     if (this.scrollBtnEl) this.scrollBtnEl.style.display = 'none';
   }
+  _scrollToBottomIfNear() {
+    if (!this.messagesEl) return;
+    var {
+      scrollTop,
+      scrollHeight,
+      clientHeight
+    } = this.messagesEl;
+    if (scrollHeight - scrollTop - clientHeight < 100) {
+      this.messagesEl.scrollTop = scrollHeight;
+    }
+  }
   _updateScrollBtn() {
     if (!this.scrollBtnEl || !this.messagesEl) return;
     var atBottom = this.messagesEl.scrollHeight - this.messagesEl.scrollTop - this.messagesEl.clientHeight < 50;
@@ -1801,6 +1964,8 @@ class ChatWindow {
     return div.innerHTML;
   }
   resetToWelcome(starterSettings) {
+    this.streamingEl = null;
+    this._streamMessageId = null;
     this.messages = [];
     this.starterSettings = starterSettings;
     if (this.messagesEl) {
@@ -1861,7 +2026,15 @@ class UIManager {
       this.agentSelector.render(this.container);
     }
 
-    // Route incoming messages to the active chat window
+    // Route streaming deltas to the active chat window
+    this.client.onDelta(delta => {
+      if (this.currentAgentId) {
+        var win = this.chatWindows.get(this.currentAgentId);
+        if (win) win.streamDelta(delta);
+      }
+    });
+
+    // Route complete messages to the active chat window (fallback / session history)
     this.client.onMessage(message => {
       if (this.currentAgentId) {
         var win = this.chatWindows.get(this.currentAgentId);

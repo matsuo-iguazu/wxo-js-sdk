@@ -44,7 +44,15 @@ class UIManager {
       this.agentSelector.render(this.container);
     }
 
-    // Route incoming messages to the active chat window
+    // Route streaming deltas to the active chat window
+    this.client.onDelta((delta) => {
+      if (this.currentAgentId) {
+        const win = this.chatWindows.get(this.currentAgentId);
+        if (win) win.streamDelta(delta);
+      }
+    });
+
+    // Route complete messages to the active chat window (fallback / session history)
     this.client.onMessage((message) => {
       if (this.currentAgentId) {
         const win = this.chatWindows.get(this.currentAgentId);

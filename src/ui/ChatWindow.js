@@ -18,6 +18,8 @@ class ChatWindow {
     this.inputEl = null;
     this.sendBtn = null;
     this.loadingEl = null;
+    this.streamingEl = null;
+    this._streamMessageId = null;
     this.scrollBtnEl = null;
     this.isExpanded = false;
     this.welcomeEl = null;
@@ -98,6 +100,12 @@ class ChatWindow {
   }
 
   addMessage(message) {
+    // If already rendered via streamDelta, just update state (avoid duplicate DOM)
+    if (message.id && this.messagesEl && this.messagesEl.querySelector(`[data-message-id="${message.id}"]`)) {
+      this.messages.push(message);
+      if (message.sender === 'agent') this._setInputDisabled(false);
+      return;
+    }
     this._hideLoading();
     this._hideWelcomeScreen();
     this.messages.push(message);
@@ -106,6 +114,105 @@ class ChatWindow {
     if (message.sender === 'agent') {
       this._setInputDisabled(false);
     }
+  }
+
+  /**
+   * Handle incoming streaming delta from ChatManager.
+   * Appends text directly as it arrives; finalizes with Markdown on isDone.
+   * @param {{messageId, text, isFirst, isDone, fullText}} delta
+   */
+  streamDelta(delta) {
+    const { messageId, text, isFirst, isDone, fullText } = delta;
+
+    if (isFirst && !this.streamingEl) {
+      this._createStreamingBubble(messageId);
+    }
+
+    if (!isDone && text && this.streamingEl) {
+      const contentEl = this.streamingEl.querySelector('.wxo-message__content');
+      if (contentEl) contentEl.textContent += text;
+      this._scrollToBottomIfNear();
+    }
+
+    if (isDone) {
+      if (!this.streamingEl && fullText) {
+        this._createStreamingBubble(messageId);
+      }
+      this._finalizeStreaming(fullText || '');
+    }
+  }
+
+  /** @private */
+  _createStreamingBubble(messageId) {
+    this._hideLoading();
+    this._hideWelcomeScreen();
+
+    const div = document.createElement('div');
+    div.className = 'wxo-message wxo-message--agent';
+    div.dataset.messageId = messageId;
+
+    const metaEl = document.createElement('div');
+    metaEl.className = 'wxo-message__meta';
+    const nameSpan = document.createElement('span');
+    nameSpan.className = 'wxo-message__meta-name';
+    nameSpan.textContent = this.agent.name;
+    const timeSpan = document.createElement('span');
+    timeSpan.className = 'wxo-message__meta-time';
+    timeSpan.textContent = new Date().toLocaleTimeString('ja-JP', { hour: 'numeric', minute: '2-digit' });
+    metaEl.appendChild(nameSpan);
+    metaEl.appendChild(timeSpan);
+    div.appendChild(metaEl);
+
+    const contentEl = document.createElement('div');
+    contentEl.className = 'wxo-message__content';
+    div.appendChild(contentEl);
+
+    this.messagesEl.appendChild(div);
+    this.streamingEl = div;
+    this._streamMessageId = messageId;
+    this._scrollToBottom();
+  }
+
+  /** @private */
+  _finalizeStreaming(fullText) {
+    if (!this.streamingEl) return;
+    const contentEl = this.streamingEl.querySelector('.wxo-message__content');
+    const messageId = this._streamMessageId;
+
+    if (contentEl) {
+      if (typeof window.marked !== 'undefined') {
+        contentEl.innerHTML = window.marked.parse(fullText || '');
+      } else {
+        contentEl.textContent = fullText || '';
+      }
+    }
+
+    // Add action row (copy + feedback)
+    const actionRow = document.createElement('div');
+    actionRow.className = 'wxo-message__actions';
+
+    let fbPanelEl = null;
+    if (this.feedbackEnabled && messageId && this.onFeedback) {
+      fbPanelEl = document.createElement('div');
+      fbPanelEl.className = 'wxo-feedback';
+      const thumbUpSVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg>`;
+      const thumbDownSVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17"/></svg>`;
+      [[thumbUpSVG, true, '応答良好'], [thumbDownSVG, false, '応答不良']].forEach(([svg, isPositive, tip]) => {
+        const btn = document.createElement('button');
+        btn.className = 'wxo-feedback__btn';
+        btn.innerHTML = svg;
+        btn.dataset.tooltip = tip;
+        btn.addEventListener('click', () => this._onRatingClick(messageId, isPositive, fbPanelEl));
+        actionRow.appendChild(btn);
+      });
+    }
+
+    actionRow.appendChild(this._createCopyButton(fullText || ''));
+    this.streamingEl.appendChild(actionRow);
+    if (fbPanelEl) this.streamingEl.appendChild(fbPanelEl);
+
+    this.streamingEl = null;
+    this._scrollToBottom();
   }
 
   _handleSend() {
@@ -418,6 +525,14 @@ class ChatWindow {
     if (this.scrollBtnEl) this.scrollBtnEl.style.display = 'none';
   }
 
+  _scrollToBottomIfNear() {
+    if (!this.messagesEl) return;
+    const { scrollTop, scrollHeight, clientHeight } = this.messagesEl;
+    if (scrollHeight - scrollTop - clientHeight < 100) {
+      this.messagesEl.scrollTop = scrollHeight;
+    }
+  }
+
   _updateScrollBtn() {
     if (!this.scrollBtnEl || !this.messagesEl) return;
     const atBottom = this.messagesEl.scrollHeight - this.messagesEl.scrollTop - this.messagesEl.clientHeight < 50;
@@ -431,6 +546,8 @@ class ChatWindow {
   }
 
   resetToWelcome(starterSettings) {
+    this.streamingEl = null;
+    this._streamMessageId = null;
     this.messages = [];
     this.starterSettings = starterSettings;
     if (this.messagesEl) {

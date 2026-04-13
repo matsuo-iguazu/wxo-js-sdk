@@ -16,7 +16,7 @@
     "lint": "eslint src/**/*.js",
     "lint:fix": "eslint src/**/*.js --fix",
     "docs": "jsdoc -c jsdoc.json",
-    "serve": "http-server examples -p 8080 -o"
+    "serve": "http-server . -p 8080 -o"
   },
   "keywords": [
     "watsonx",

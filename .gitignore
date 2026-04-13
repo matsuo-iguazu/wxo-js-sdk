@@ -10,6 +10,7 @@ build/
 # Example files with real credentials - use *.template.html instead
 examples/basic-example.html
 examples/garoon-embed-test.js
+examples/garoon-embed-test-*.js
 
 # Test coverage
 coverage/

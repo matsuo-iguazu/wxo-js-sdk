@@ -16,6 +16,7 @@ class ChatManager {
     this.sessions = new Map(); // agentId -> session data
     this.currentAgentId = null;
     this.messageHandlers = [];
+    this.deltaHandlers = [];
     this.errorHandlers = [];
   }
 
@@ -165,6 +166,8 @@ class ChatManager {
     const decoder = new TextDecoder();
     let buffer = '';
     let agentText = '';
+    const messageId = this._generateMessageId();
+    let isFirstDelta = true;
 
     try {
       while (true) {
@@ -179,7 +182,11 @@ class ChatManager {
         buffer = lines.pop(); // keep incomplete last line
 
         for (const line of lines) {
-          this._processStreamLine(line, (text) => { agentText += text; });
+          this._processStreamLine(line, (text) => {
+            agentText += text;
+            this._triggerDeltaHandlers({ messageId, text, isFirst: isFirstDelta, isDone: false });
+            isFirstDelta = false;
+          });
         }
       }
 
@@ -188,16 +195,23 @@ class ChatManager {
         if (this.config.isDebug()) {
           console.log('[wxo-sdk] Stream remaining buffer:', JSON.stringify(buffer));
         }
-        this._processStreamLine(buffer, (text) => { agentText += text; });
+        this._processStreamLine(buffer, (text) => {
+          agentText += text;
+          this._triggerDeltaHandlers({ messageId, text, isFirst: isFirstDelta, isDone: false });
+          isFirstDelta = false;
+        });
       }
     } finally {
       reader.releaseLock();
     }
 
-    // Emit the complete agent message
+    // Signal stream complete
+    this._triggerDeltaHandlers({ messageId, text: '', isFirst: false, isDone: true, fullText: agentText });
+
+    // Emit the complete agent message (for session history and non-streaming consumers)
     if (agentText) {
       const agentMessage = {
-        id: this._generateMessageId(),
+        id: messageId,
         text: agentText,
         sender: 'agent',
         timestamp: Date.now()
@@ -257,24 +271,15 @@ class ChatManager {
       if (parsed.event === 'message.delta') {
         const content = parsed.data?.delta?.content;
         if (Array.isArray(content)) {
+          // No type filter — extract text from any content item to handle varying API formats
           return content
-            .filter(c => c.response_type === 'text' || c.type === 'text')
-            .map(c => (typeof c.text === 'string' ? c.text : c.text?.value ?? ''))
+            .map(c => (typeof c.text === 'string' ? c.text : (c.text?.value ?? '')))
+            .filter(t => t.length > 0)
             .join('');
         }
         if (typeof content === 'string') return content;
       }
-      // message.completed: fallback for full final text
-      if (parsed.event === 'message.completed') {
-        const content = parsed.data?.content ?? parsed.data?.delta?.content;
-        if (Array.isArray(content)) {
-          return content
-            .filter(c => c.response_type === 'text' || c.type === 'text')
-            .map(c => (typeof c.text === 'string' ? c.text : c.text?.value ?? ''))
-            .join('');
-        }
-      }
-      return null; // all other events (run.started, run.completed, etc.)
+      return null; // message.completed and all other events — text comes from message.delta only
     }
 
     // Fallback for other formats
@@ -390,11 +395,20 @@ class ChatManager {
   }
 
   /**
-   * Register message handler
+   * Register message handler (called once with complete message after stream ends)
    * @param {Function} handler
    */
   onMessage(handler) {
     this.messageHandlers.push(handler);
+  }
+
+  /**
+   * Register delta handler for streaming incremental text
+   * Called with {messageId, text, isFirst, isDone, fullText}
+   * @param {Function} handler
+   */
+  onDelta(handler) {
+    this.deltaHandlers.push(handler);
   }
 
   /**
@@ -409,6 +423,13 @@ class ChatManager {
   _triggerMessageHandlers(message) {
     this.messageHandlers.forEach(h => {
       try { h(message); } catch (e) { console.error('[wxo-sdk] Message handler error:', e); }
+    });
+  }
+
+  /** @private */
+  _triggerDeltaHandlers(delta) {
+    this.deltaHandlers.forEach(h => {
+      try { h(delta); } catch (e) { console.error('[wxo-sdk] Delta handler error:', e); }
     });
   }
 
@@ -433,6 +454,7 @@ class ChatManager {
     }
     this.sessions.clear();
     this.messageHandlers = [];
+    this.deltaHandlers = [];
     this.errorHandlers = [];
     this.currentAgentId = null;
   }

@@ -467,6 +467,7 @@
       this.sessions = new Map(); // agentId -> session data
       this.currentAgentId = null;
       this.messageHandlers = [];
+      this.deltaHandlers = [];
       this.errorHandlers = [];
     }
 
@@ -605,6 +606,8 @@
       const decoder = new TextDecoder();
       let buffer = '';
       let agentText = '';
+      const messageId = this._generateMessageId();
+      let isFirstDelta = true;
       try {
         while (true) {
           const {
@@ -624,6 +627,13 @@
           for (const line of lines) {
             this._processStreamLine(line, text => {
               agentText += text;
+              this._triggerDeltaHandlers({
+                messageId,
+                text,
+                isFirst: isFirstDelta,
+                isDone: false
+              });
+              isFirstDelta = false;
             });
           }
         }
@@ -635,16 +645,32 @@
           }
           this._processStreamLine(buffer, text => {
             agentText += text;
+            this._triggerDeltaHandlers({
+              messageId,
+              text,
+              isFirst: isFirstDelta,
+              isDone: false
+            });
+            isFirstDelta = false;
           });
         }
       } finally {
         reader.releaseLock();
       }
 
-      // Emit the complete agent message
+      // Signal stream complete
+      this._triggerDeltaHandlers({
+        messageId,
+        text: '',
+        isFirst: false,
+        isDone: true,
+        fullText: agentText
+      });
+
+      // Emit the complete agent message (for session history and non-streaming consumers)
       if (agentText) {
         const agentMessage = {
-          id: this._generateMessageId(),
+          id: messageId,
           text: agentText,
           sender: 'agent',
           timestamp: Date.now()
@@ -702,18 +728,12 @@
         if (parsed.event === 'message.delta') {
           const content = parsed.data?.delta?.content;
           if (Array.isArray(content)) {
-            return content.filter(c => c.response_type === 'text' || c.type === 'text').map(c => typeof c.text === 'string' ? c.text : c.text?.value ?? '').join('');
+            // No type filter — extract text from any content item to handle varying API formats
+            return content.map(c => typeof c.text === 'string' ? c.text : c.text?.value ?? '').filter(t => t.length > 0).join('');
           }
           if (typeof content === 'string') return content;
         }
-        // message.completed: fallback for full final text
-        if (parsed.event === 'message.completed') {
-          const content = parsed.data?.content ?? parsed.data?.delta?.content;
-          if (Array.isArray(content)) {
-            return content.filter(c => c.response_type === 'text' || c.type === 'text').map(c => typeof c.text === 'string' ? c.text : c.text?.value ?? '').join('');
-          }
-        }
-        return null; // all other events (run.started, run.completed, etc.)
+        return null; // message.completed and all other events — text comes from message.delta only
       }
 
       // Fallback for other formats
@@ -824,11 +844,20 @@
     }
 
     /**
-     * Register message handler
+     * Register message handler (called once with complete message after stream ends)
      * @param {Function} handler
      */
     onMessage(handler) {
       this.messageHandlers.push(handler);
+    }
+
+    /**
+     * Register delta handler for streaming incremental text
+     * Called with {messageId, text, isFirst, isDone, fullText}
+     * @param {Function} handler
+     */
+    onDelta(handler) {
+      this.deltaHandlers.push(handler);
     }
 
     /**
@@ -846,6 +875,17 @@
           h(message);
         } catch (e) {
           console.error('[wxo-sdk] Message handler error:', e);
+        }
+      });
+    }
+
+    /** @private */
+    _triggerDeltaHandlers(delta) {
+      this.deltaHandlers.forEach(h => {
+        try {
+          h(delta);
+        } catch (e) {
+          console.error('[wxo-sdk] Delta handler error:', e);
         }
       });
     }
@@ -875,6 +915,7 @@
       }
       this.sessions.clear();
       this.messageHandlers = [];
+      this.deltaHandlers = [];
       this.errorHandlers = [];
       this.currentAgentId = null;
     }
@@ -1030,6 +1071,15 @@
     }
 
     /**
+     * Register delta handler for streaming incremental text
+     * @param {Function} handler
+     */
+    onDelta(handler) {
+      this._ensureInitialized();
+      this.chatManager.onDelta(handler);
+    }
+
+    /**
      * Register error handler
      * @param {Function} handler
      */
@@ -1175,12 +1225,7 @@
       this.el = document.createElement('div');
       this.el.className = 'wxo-floating-btn';
       this.el.setAttribute('aria-label', 'Open chat');
-      this.el.innerHTML = `
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="white" width="28" height="28">
-        <path d="M16 2C8.3 2 2 8.3 2 16s6.3 14 14 14c2.3 0 4.5-.6 6.5-1.6L28 30l-1.6-5.5C27.4 22.5 30 19.4 30 16 30 8.3 23.7 2 16 2zm0 26c-6.6 0-12-5.4-12-12S9.4 4 16 4s12 5.4 12 12-5.4 12-12 12z"/>
-        <path d="M9 13h14v2H9zm0 4h10v2H9z"/>
-      </svg>
-    `;
+      this.el.innerHTML = `<span style="color:white;font-size:18px;font-weight:700;letter-spacing:0.5px;font-family:'IBM Plex Sans',-apple-system,sans-serif;">AI</span>`;
       this.el.addEventListener('click', this.onClick);
       container.appendChild(this.el);
     }
@@ -1289,6 +1334,8 @@
       this.inputEl = null;
       this.sendBtn = null;
       this.loadingEl = null;
+      this.streamingEl = null;
+      this._streamMessageId = null;
       this.scrollBtnEl = null;
       this.isExpanded = false;
       this.welcomeEl = null;
@@ -1364,6 +1411,12 @@
       this._scrollToBottom();
     }
     addMessage(message) {
+      // If already rendered via streamDelta, just update state (avoid duplicate DOM)
+      if (message.id && this.messagesEl && this.messagesEl.querySelector(`[data-message-id="${message.id}"]`)) {
+        this.messages.push(message);
+        if (message.sender === 'agent') this._setInputDisabled(false);
+        return;
+      }
       this._hideLoading();
       this._hideWelcomeScreen();
       this.messages.push(message);
@@ -1372,6 +1425,103 @@
       if (message.sender === 'agent') {
         this._setInputDisabled(false);
       }
+    }
+
+    /**
+     * Handle incoming streaming delta from ChatManager.
+     * Appends text directly as it arrives; finalizes with Markdown on isDone.
+     * @param {{messageId, text, isFirst, isDone, fullText}} delta
+     */
+    streamDelta(delta) {
+      const {
+        messageId,
+        text,
+        isFirst,
+        isDone,
+        fullText
+      } = delta;
+      if (isFirst && !this.streamingEl) {
+        this._createStreamingBubble(messageId);
+      }
+      if (!isDone && text && this.streamingEl) {
+        const contentEl = this.streamingEl.querySelector('.wxo-message__content');
+        if (contentEl) contentEl.textContent += text;
+        this._scrollToBottomIfNear();
+      }
+      if (isDone) {
+        if (!this.streamingEl && fullText) {
+          this._createStreamingBubble(messageId);
+        }
+        this._finalizeStreaming(fullText || '');
+      }
+    }
+
+    /** @private */
+    _createStreamingBubble(messageId) {
+      this._hideLoading();
+      this._hideWelcomeScreen();
+      const div = document.createElement('div');
+      div.className = 'wxo-message wxo-message--agent';
+      div.dataset.messageId = messageId;
+      const metaEl = document.createElement('div');
+      metaEl.className = 'wxo-message__meta';
+      const nameSpan = document.createElement('span');
+      nameSpan.className = 'wxo-message__meta-name';
+      nameSpan.textContent = this.agent.name;
+      const timeSpan = document.createElement('span');
+      timeSpan.className = 'wxo-message__meta-time';
+      timeSpan.textContent = new Date().toLocaleTimeString('ja-JP', {
+        hour: 'numeric',
+        minute: '2-digit'
+      });
+      metaEl.appendChild(nameSpan);
+      metaEl.appendChild(timeSpan);
+      div.appendChild(metaEl);
+      const contentEl = document.createElement('div');
+      contentEl.className = 'wxo-message__content';
+      div.appendChild(contentEl);
+      this.messagesEl.appendChild(div);
+      this.streamingEl = div;
+      this._streamMessageId = messageId;
+      this._scrollToBottom();
+    }
+
+    /** @private */
+    _finalizeStreaming(fullText) {
+      if (!this.streamingEl) return;
+      const contentEl = this.streamingEl.querySelector('.wxo-message__content');
+      const messageId = this._streamMessageId;
+      if (contentEl) {
+        if (typeof window.marked !== 'undefined') {
+          contentEl.innerHTML = window.marked.parse(fullText || '');
+        } else {
+          contentEl.textContent = fullText || '';
+        }
+      }
+
+      // Add action row (copy + feedback)
+      const actionRow = document.createElement('div');
+      actionRow.className = 'wxo-message__actions';
+      let fbPanelEl = null;
+      if (this.feedbackEnabled && messageId && this.onFeedback) {
+        fbPanelEl = document.createElement('div');
+        fbPanelEl.className = 'wxo-feedback';
+        const thumbUpSVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg>`;
+        const thumbDownSVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17"/></svg>`;
+        [[thumbUpSVG, true, '応答良好'], [thumbDownSVG, false, '応答不良']].forEach(([svg, isPositive, tip]) => {
+          const btn = document.createElement('button');
+          btn.className = 'wxo-feedback__btn';
+          btn.innerHTML = svg;
+          btn.dataset.tooltip = tip;
+          btn.addEventListener('click', () => this._onRatingClick(messageId, isPositive, fbPanelEl));
+          actionRow.appendChild(btn);
+        });
+      }
+      actionRow.appendChild(this._createCopyButton(fullText || ''));
+      this.streamingEl.appendChild(actionRow);
+      if (fbPanelEl) this.streamingEl.appendChild(fbPanelEl);
+      this.streamingEl = null;
+      this._scrollToBottom();
     }
     _handleSend() {
       if (!this.inputEl || this.sendBtn.disabled) return;
@@ -1656,6 +1806,17 @@
       }
       if (this.scrollBtnEl) this.scrollBtnEl.style.display = 'none';
     }
+    _scrollToBottomIfNear() {
+      if (!this.messagesEl) return;
+      const {
+        scrollTop,
+        scrollHeight,
+        clientHeight
+      } = this.messagesEl;
+      if (scrollHeight - scrollTop - clientHeight < 100) {
+        this.messagesEl.scrollTop = scrollHeight;
+      }
+    }
     _updateScrollBtn() {
       if (!this.scrollBtnEl || !this.messagesEl) return;
       const atBottom = this.messagesEl.scrollHeight - this.messagesEl.scrollTop - this.messagesEl.clientHeight < 50;
@@ -1667,6 +1828,8 @@
       return div.innerHTML;
     }
     resetToWelcome(starterSettings) {
+      this.streamingEl = null;
+      this._streamMessageId = null;
       this.messages = [];
       this.starterSettings = starterSettings;
       if (this.messagesEl) {
@@ -1727,7 +1890,15 @@
         this.agentSelector.render(this.container);
       }
 
-      // Route incoming messages to the active chat window
+      // Route streaming deltas to the active chat window
+      this.client.onDelta(delta => {
+        if (this.currentAgentId) {
+          const win = this.chatWindows.get(this.currentAgentId);
+          if (win) win.streamDelta(delta);
+        }
+      });
+
+      // Route complete messages to the active chat window (fallback / session history)
       this.client.onMessage(message => {
         if (this.currentAgentId) {
           const win = this.chatWindows.get(this.currentAgentId);

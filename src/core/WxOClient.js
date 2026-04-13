@@ -154,6 +154,15 @@ class WxOClient {
   }
 
   /**
+   * Register delta handler for streaming incremental text
+   * @param {Function} handler
+   */
+  onDelta(handler) {
+    this._ensureInitialized();
+    this.chatManager.onDelta(handler);
+  }
+
+  /**
    * Register error handler
    * @param {Function} handler
    */
