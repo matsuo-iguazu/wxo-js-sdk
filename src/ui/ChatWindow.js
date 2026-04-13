@@ -556,8 +556,13 @@ class ChatWindow {
       this.messagesEl.innerHTML = '';
       this.welcomeEl = null;
     }
+    if (this.inputEl) {
+      this.inputEl.value = '';
+      this._resizeInput();
+    }
     this._renderWelcomeScreen();
     this._setInputDisabled(false);
+    if (this.sendBtn) this.sendBtn.disabled = true;
     if (this.scrollBtnEl) this.scrollBtnEl.style.display = 'none';
   }
 
