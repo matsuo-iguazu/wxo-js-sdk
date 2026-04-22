@@ -46,9 +46,12 @@
   function init() {
     // marked.js (エージェント応答のMarkdownレンダリング用・任意)
     loadScript('https://cdn.jsdelivr.net/npm/marked/marked.min.js', function () {
-      // wxo-js-sdk 本体
-      loadScript('https://matsuo-iguazu.github.io/wxo-js-sdk/dist/wxo-sdk.min.js', function () {
-        wxoLoader.init().catch(function (e) { console.error('[wxo]', e); });
+      // DOMPurify (XSS対策・推奨)
+      loadScript('https://cdn.jsdelivr.net/npm/dompurify/dist/purify.min.js', function () {
+        // wxo-js-sdk 本体
+        loadScript('https://matsuo-iguazu.github.io/wxo-js-sdk/dist/wxo-sdk.min.js', function () {
+          wxoLoader.init().catch(function (e) { console.error('[wxo]', e); });
+        });
       });
     });
   }
