@@ -1639,8 +1639,9 @@ class ChatWindow {
     var messageId = this._streamMessageId;
     if (contentEl) {
       contentEl.style.whiteSpace = '';
-      if (typeof window.marked !== 'undefined') {
-        contentEl.innerHTML = window.marked.parse(fullText || '');
+      var html = this._parseMarkdown(fullText || '');
+      if (html !== null) {
+        contentEl.innerHTML = html;
       } else {
         contentEl.textContent = fullText || '';
       }
@@ -1747,8 +1748,13 @@ class ChatWindow {
     contentEl.className = 'wxo-message__content';
     if (isLoading) {
       contentEl.innerHTML = '<span class="wxo-loading-dots"><span>●</span><span>●</span><span>●</span></span>';
-    } else if (message.sender === 'agent' && typeof window.marked !== 'undefined') {
-      contentEl.innerHTML = window.marked.parse(message.text || '');
+    } else if (message.sender === 'agent') {
+      var html = this._parseMarkdown(message.text || '');
+      if (html !== null) {
+        contentEl.innerHTML = html;
+      } else {
+        contentEl.textContent = message.text || '';
+      }
     } else {
       contentEl.textContent = message.text || '';
     }
@@ -1959,6 +1965,16 @@ class ChatWindow {
     if (!this.scrollBtnEl || !this.messagesEl) return;
     var atBottom = this.messagesEl.scrollHeight - this.messagesEl.scrollTop - this.messagesEl.clientHeight < 50;
     this.scrollBtnEl.style.display = atBottom ? 'none' : 'flex';
+  }
+  _parseMarkdown(text) {
+    if (typeof window.marked === 'undefined') return null;
+    var tmp = document.createElement('div');
+    tmp.innerHTML = window.marked.parse(text);
+    tmp.querySelectorAll('a').forEach(a => {
+      a.setAttribute('target', '_blank');
+      a.setAttribute('rel', 'noopener noreferrer');
+    });
+    return tmp.innerHTML;
   }
   _escapeHtml(str) {
     var div = document.createElement('div');
