@@ -14,6 +14,12 @@ Markdown レンダリングを有効にする場合は先に読み込む：
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 ```
 
+XSS 対策（推奨）として DOMPurify も合わせて読み込む：
+
+```html
+<script src="https://cdn.jsdelivr.net/npm/dompurify/dist/purify.min.js"></script>
+```
+
 ## 使い方
 
 ```html

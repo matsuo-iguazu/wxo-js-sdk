@@ -1968,8 +1968,12 @@ class ChatWindow {
   }
   _parseMarkdown(text) {
     if (typeof window.marked === 'undefined') return null;
+    var html = window.marked.parse(text);
+    if (typeof window.DOMPurify !== 'undefined') {
+      html = window.DOMPurify.sanitize(html);
+    }
     var tmp = document.createElement('div');
-    tmp.innerHTML = window.marked.parse(text);
+    tmp.innerHTML = html;
     tmp.querySelectorAll('a').forEach(a => {
       a.setAttribute('target', '_blank');
       a.setAttribute('rel', 'noopener noreferrer');
