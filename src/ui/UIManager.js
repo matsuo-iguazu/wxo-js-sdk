@@ -432,7 +432,7 @@ class UIManager {
       }
       .wxo-window-loading::after {
         content: ''; width: 28px; height: 28px;
-        border: 3px solid #e0e0e0; border-top-color: #525252;
+        border: 3px solid #e0e0e0; border-top-color: #8d8d8d;
         border-radius: 50%; animation: wxo-spin 1.4s linear infinite;
       }
       @keyframes wxo-spin { to { transform: rotate(360deg); } }
