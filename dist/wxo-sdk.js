@@ -2302,7 +2302,7 @@
       .wxo-window-loading::after {
         content: ''; width: 28px; height: 28px;
         border: 3px solid #e0e0e0; border-top-color: #525252;
-        border-radius: 50%; animation: wxo-spin 0.8s linear infinite;
+        border-radius: 50%; animation: wxo-spin 1.4s linear infinite;
       }
       @keyframes wxo-spin { to { transform: rotate(360deg); } }
 
