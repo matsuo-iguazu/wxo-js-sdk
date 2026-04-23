@@ -1339,6 +1339,7 @@
       this.scrollBtnEl = null;
       this.isExpanded = false;
       this.welcomeEl = null;
+      this._windowLoadingEl = null;
     }
     render(container) {
       this.el = document.createElement('div');
@@ -1377,11 +1378,15 @@
       this.sendBtn = this.el.querySelector('.wxo-chat-send');
       this.scrollBtnEl = this.el.querySelector('.wxo-scroll-bottom');
 
-      // Render existing messages or welcome screen
+      // Render existing messages, welcome screen, or loading spinner
       if (this.messages.length > 0) {
         this.messages.forEach(msg => this._appendMessageEl(msg));
-      } else {
+      } else if (this.starterSettings !== null) {
         this._renderWelcomeScreen();
+      } else {
+        this._windowLoadingEl = document.createElement('div');
+        this._windowLoadingEl.className = 'wxo-window-loading';
+        this.messagesEl.appendChild(this._windowLoadingEl);
       }
 
       // Event listeners
@@ -1849,6 +1854,16 @@
       div.textContent = str;
       return div.innerHTML;
     }
+    setStarterSettings(starterSettings) {
+      this.starterSettings = starterSettings;
+      if (this._windowLoadingEl && this._windowLoadingEl.parentNode) {
+        this._windowLoadingEl.parentNode.removeChild(this._windowLoadingEl);
+        this._windowLoadingEl = null;
+      }
+      if (this.messages.length === 0) {
+        this._renderWelcomeScreen();
+      }
+    }
     resetToWelcome(starterSettings) {
       this.streamingEl = null;
       this._streamMessageId = null;
@@ -1991,17 +2006,16 @@
         return;
       }
 
-      // First open for this agent: start session and create window
+      // First open for this agent: render window immediately, fetch settings in background
       this.currentAgentId = agentId;
-
-      // Fetch session and starter settings concurrently
-      const [, starterSettings] = await Promise.all([this.client.startChat(agentId), this.client.fetchChatStarterSettings(agentId).catch(() => null)]);
       const agent = this.config.getAgent(agentId);
       const feedbackEnabled = this.config.isFeatureEnabled('feedback');
       const feedbackOptions = this.config.getFeedbackOptions();
+
+      // Render with starterSettings=null → shows loading spinner in content area
       const chatWindow = new ChatWindow({
         agent,
-        starterSettings,
+        starterSettings: null,
         messages: this.client.getMessages(),
         feedbackEnabled,
         feedbackOptions,
@@ -2018,6 +2032,12 @@
       });
       chatWindow.render(this.container);
       this.chatWindows.set(agentId, chatWindow);
+
+      // Fetch session and starter settings in background
+      const [, starterSettings] = await Promise.all([this.client.startChat(agentId), this.client.fetchChatStarterSettings(agentId).catch(() => null)]);
+
+      // Replace loading spinner with welcome screen
+      chatWindow.setStarterSettings(starterSettings);
     }
     _minimizeChat() {
       // Hide (not destroy) the active window to preserve DOM and message history
@@ -2274,6 +2294,17 @@
       }
       .wxo-loading-dots span:nth-child(2) { animation-delay: 0.2s; }
       .wxo-loading-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+      /* Window-open loading spinner */
+      .wxo-window-loading {
+        display: flex; justify-content: center; align-items: center; flex: 1; padding: 40px;
+      }
+      .wxo-window-loading::after {
+        content: ''; width: 28px; height: 28px;
+        border: 3px solid #e0e0e0; border-top-color: #525252;
+        border-radius: 50%; animation: wxo-spin 0.8s linear infinite;
+      }
+      @keyframes wxo-spin { to { transform: rotate(360deg); } }
 
       /* Markdown inside agent messages */
       .wxo-message--agent .wxo-message__content p { margin: 4px 0; }

@@ -124,22 +124,17 @@ class UIManager {
       return;
     }
 
-    // First open for this agent: start session and create window
+    // First open for this agent: render window immediately, fetch settings in background
     this.currentAgentId = agentId;
-
-    // Fetch session and starter settings concurrently
-    const [, starterSettings] = await Promise.all([
-      this.client.startChat(agentId),
-      this.client.fetchChatStarterSettings(agentId).catch(() => null),
-    ]);
 
     const agent = this.config.getAgent(agentId);
     const feedbackEnabled = this.config.isFeatureEnabled('feedback');
     const feedbackOptions = this.config.getFeedbackOptions();
 
+    // Render with starterSettings=null → shows loading spinner in content area
     const chatWindow = new ChatWindow({
       agent,
-      starterSettings,
+      starterSettings: null,
       messages: this.client.getMessages(),
       feedbackEnabled,
       feedbackOptions,
@@ -157,6 +152,15 @@ class UIManager {
 
     chatWindow.render(this.container);
     this.chatWindows.set(agentId, chatWindow);
+
+    // Fetch session and starter settings in background
+    const [, starterSettings] = await Promise.all([
+      this.client.startChat(agentId),
+      this.client.fetchChatStarterSettings(agentId).catch(() => null),
+    ]);
+
+    // Replace loading spinner with welcome screen
+    chatWindow.setStarterSettings(starterSettings);
   }
 
   _minimizeChat() {
@@ -421,6 +425,17 @@ class UIManager {
       }
       .wxo-loading-dots span:nth-child(2) { animation-delay: 0.2s; }
       .wxo-loading-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+      /* Window-open loading spinner */
+      .wxo-window-loading {
+        display: flex; justify-content: center; align-items: center; flex: 1; padding: 40px;
+      }
+      .wxo-window-loading::after {
+        content: ''; width: 28px; height: 28px;
+        border: 3px solid #e0e0e0; border-top-color: #525252;
+        border-radius: 50%; animation: wxo-spin 0.8s linear infinite;
+      }
+      @keyframes wxo-spin { to { transform: rotate(360deg); } }
 
       /* Markdown inside agent messages */
       .wxo-message--agent .wxo-message__content p { margin: 4px 0; }

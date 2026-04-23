@@ -23,6 +23,7 @@ class ChatWindow {
     this.scrollBtnEl = null;
     this.isExpanded = false;
     this.welcomeEl = null;
+    this._windowLoadingEl = null;
   }
 
   render(container) {
@@ -64,11 +65,15 @@ class ChatWindow {
     this.sendBtn = this.el.querySelector('.wxo-chat-send');
     this.scrollBtnEl = this.el.querySelector('.wxo-scroll-bottom');
 
-    // Render existing messages or welcome screen
+    // Render existing messages, welcome screen, or loading spinner
     if (this.messages.length > 0) {
       this.messages.forEach(msg => this._appendMessageEl(msg));
-    } else {
+    } else if (this.starterSettings !== null) {
       this._renderWelcomeScreen();
+    } else {
+      this._windowLoadingEl = document.createElement('div');
+      this._windowLoadingEl.className = 'wxo-window-loading';
+      this.messagesEl.appendChild(this._windowLoadingEl);
     }
 
     // Event listeners
@@ -566,6 +571,17 @@ class ChatWindow {
     const div = document.createElement('div');
     div.textContent = str;
     return div.innerHTML;
+  }
+
+  setStarterSettings(starterSettings) {
+    this.starterSettings = starterSettings;
+    if (this._windowLoadingEl && this._windowLoadingEl.parentNode) {
+      this._windowLoadingEl.parentNode.removeChild(this._windowLoadingEl);
+      this._windowLoadingEl = null;
+    }
+    if (this.messages.length === 0) {
+      this._renderWelcomeScreen();
+    }
   }
 
   resetToWelcome(starterSettings) {
