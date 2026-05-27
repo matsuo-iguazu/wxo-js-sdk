@@ -664,13 +664,8 @@ class ChatManager {
       // Note: user messages are returned to the caller for display.
       // onMessage handlers are reserved for agent responses only.
 
-      // Send to orchestrate/runs — WebSocket mode if connected, HTTP streaming as fallback
       try {
-        if (_this3.socketClient) {
-          yield _this3._sendToRunsViaWebSocket(session, text);
-        } else {
-          yield _this3._sendToRuns(session, text);
-        }
+        yield _this3._sendToRuns(session, text);
       } catch (error) {
         console.error('[wxo-sdk] Failed to send message:', error);
         _this3._handleError(error);
@@ -727,124 +722,121 @@ class ChatManager {
       if (_this5.config.isDebug()) {
         console.log('[wxo-sdk] Sending to runs:', body);
       }
+
+      // Pre-register WS buffer BEFORE HTTP request to avoid missing early events.
+      // If the HTTP stream returns a "flow started" notification, we switch to consuming
+      // the WS buffer for the actual response. Simple agents produce no WS events so the
+      // buffer stays empty and is cleaned up after HTTP streaming completes.
+      var wsBuffer = _this5.socketClient && _this5.socketClient.isConnected() ? _this5._bufferWebSocketEvents(session) : null;
       var response = yield _this5.httpClient.stream(path, body);
-      yield _this5._handleStreamResponse(response, session);
+      yield _this5._handleStreamResponse(response, session, wsBuffer);
     })();
   }
 
   /**
-   * Send message via /runs and receive response events via WebSocket.
-   * POST /runs triggers the agent run; actual events arrive on the Socket.IO connection.
+   * Buffer WebSocket WORKER_MESSAGE events for a session before HTTP response arrives.
+   * Returns a handle with consume(onEvent) and cleanup().
    * @private
    */
-  _sendToRunsViaWebSocket(session, text) {
+  _bufferWebSocketEvents(session) {
+    var buffered = [];
+    var liveConsumer = null;
+    var handler = workerMsg => {
+      var _workerMsg$data;
+      var threadId = ((_workerMsg$data = workerMsg.data) === null || _workerMsg$data === void 0 ? void 0 : _workerMsg$data.thread_id) || workerMsg.thread_id;
+      if (threadId && threadId !== session.threadId) return;
+      if (!workerMsg.event) return; // skip tenant-notification messages
+
+      if (liveConsumer) {
+        liveConsumer(workerMsg);
+      } else {
+        buffered.push(workerMsg);
+      }
+    };
+    this.socketClient.onWorkerMessage(handler);
+    return {
+      consume: onEvent => {
+        buffered.splice(0).forEach(e => onEvent(e));
+        liveConsumer = onEvent;
+      },
+      cleanup: () => {
+        this.socketClient.removeWorkerMessageHandler(handler);
+        buffered.length = 0;
+        liveConsumer = null;
+      }
+    };
+  }
+
+  /**
+   * Consume buffered + live WebSocket events and stream them as agent response.
+   * Called when HTTP stream detects a flow-started notification.
+   * @private
+   */
+  _consumeFromWebSocketBuffer(wsBuffer, session, messageId, isFirstDelta) {
     var _this6 = this;
     return _asyncToGenerator(function* () {
-      var path = '/mfe_home_archer/api/v1/orchestrate/runs?stream=true&stream_timeout=180000&multiple_content=true';
-      var body = {
-        message: {
-          role: 'user',
-          content: text,
-          additional_properties: {}
-        },
-        context: {},
-        agent_id: session.agent.agentId,
-        thread_id: session.threadId,
-        environment_id: session.agent.agentEnvironmentId || ''
-      };
-      if (_this6.config.isDebug()) {
-        console.log('[wxo-sdk] Sending to runs (WebSocket mode):', body);
-      }
-      var messageId = _this6._generateMessageId();
-      var isFirstDelta = true;
       var agentText = '';
-      var wsResolve;
-      var wsPromise = new Promise((resolve, reject) => {
-        wsResolve = resolve;
-      });
-      var handler = workerMsg => {
-        var _workerMsg$data;
-        // Filter by thread_id (present in data.thread_id for event messages)
-        var threadId = ((_workerMsg$data = workerMsg.data) === null || _workerMsg$data === void 0 ? void 0 : _workerMsg$data.thread_id) || workerMsg.thread_id;
-        if (threadId && threadId !== session.threadId) return;
-
-        // Skip non-event messages (e.g. initial WORKER_MESSAGE with tenant_id/run)
-        if (!workerMsg.event) return;
-        var chunk = _this6._extractTextFromEvent(workerMsg);
-        if (chunk) {
-          agentText += chunk;
-          _this6._triggerDeltaHandlers({
-            messageId,
-            text: chunk,
-            isFirst: isFirstDelta,
-            isDone: false
-          });
-          isFirstDelta = false;
-        }
-        if (workerMsg.event === 'done') {
-          _this6.socketClient.removeWorkerMessageHandler(handler);
-          _this6._triggerDeltaHandlers({
-            messageId,
-            text: '',
-            isFirst: false,
-            isDone: true,
-            fullText: agentText
-          });
-          if (agentText) {
-            var agentMessage = {
-              id: messageId,
-              text: agentText,
-              sender: 'agent',
-              timestamp: Date.now()
-            };
-            session.messages.push(agentMessage);
-            _this6._triggerMessageHandlers(agentMessage);
+      var _isFirstDelta = isFirstDelta;
+      return new Promise(resolve => {
+        wsBuffer.consume(workerMsg => {
+          var chunk = _this6._extractTextFromEvent(workerMsg);
+          if (chunk) {
+            agentText += chunk;
+            _this6._triggerDeltaHandlers({
+              messageId,
+              text: chunk,
+              isFirst: _isFirstDelta,
+              isDone: false
+            });
+            _isFirstDelta = false;
           }
-          if (_this6.config.isDebug()) {
-            console.log('[wxo-sdk] WebSocket stream complete. Agent response:', agentText);
-          }
-          wsResolve();
-        }
-      };
-      _this6.socketClient.onWorkerMessage(handler);
-      try {
-        // POST /runs to trigger the agent run
-        var response = yield _this6.httpClient.stream(path, body);
-        // Drain the HTTP response in background — actual events arrive via WebSocket
-        var reader = response.body.getReader();
-        _asyncToGenerator(function* () {
-          try {
-            while (true) {
-              var {
-                done
-              } = yield reader.read();
-              if (done) break;
+          if (workerMsg.event === 'done') {
+            wsBuffer.cleanup();
+            _this6._triggerDeltaHandlers({
+              messageId,
+              text: '',
+              isFirst: false,
+              isDone: true,
+              fullText: agentText
+            });
+            if (agentText) {
+              var agentMessage = {
+                id: messageId,
+                text: agentText,
+                sender: 'agent',
+                timestamp: Date.now()
+              };
+              session.messages.push(agentMessage);
+              _this6._triggerMessageHandlers(agentMessage);
             }
-          } catch (_) {} finally {
-            reader.releaseLock();
+            if (_this6.config.isDebug()) {
+              console.log('[wxo-sdk] WebSocket stream complete. Agent response:', agentText);
+            }
+            resolve();
           }
-        })();
-      } catch (error) {
-        _this6.socketClient.removeWorkerMessageHandler(handler);
-        throw error;
-      }
-      yield wsPromise;
+        });
+      });
     })();
   }
 
   /**
-   * Handle streaming response (SSE or chunked)
+   * Handle streaming response (SSE or chunked).
+   * If wsBuffer is provided and a flow-started notification is detected in the HTTP stream,
+   * switches to consuming WebSocket events for the actual agent response.
    * @private
    */
   _handleStreamResponse(response, session) {
-    var _this7 = this;
+    var _arguments2 = arguments,
+      _this7 = this;
     return _asyncToGenerator(function* () {
+      var wsBuffer = _arguments2.length > 2 && _arguments2[2] !== undefined ? _arguments2[2] : null;
       var reader = response.body.getReader();
       var decoder = new TextDecoder();
       var buffer = '';
       var agentText = '';
       var messageId = _this7._generateMessageId();
       var isFirstDelta = true;
+      var flowDetected = false;
       try {
         while (true) {
           var {
@@ -863,6 +855,10 @@ class ChatManager {
 
           for (var line of lines) {
             _this7._processStreamLine(line, text => {
+              if (text.toLowerCase().includes('new flow has started')) {
+                flowDetected = true;
+                return; // don't emit flow notification to UI
+              }
               agentText += text;
               _this7._triggerDeltaHandlers({
                 messageId,
@@ -881,6 +877,10 @@ class ChatManager {
             console.log('[wxo-sdk] Stream remaining buffer:', JSON.stringify(buffer));
           }
           _this7._processStreamLine(buffer, text => {
+            if (text.toLowerCase().includes('new flow has started')) {
+              flowDetected = true;
+              return;
+            }
             agentText += text;
             _this7._triggerDeltaHandlers({
               messageId,
@@ -894,6 +894,18 @@ class ChatManager {
       } finally {
         reader.releaseLock();
       }
+
+      // Flow agent: HTTP stream carried only the "flow started" notification; actual response arrives via WebSocket
+      if (flowDetected && wsBuffer) {
+        if (_this7.config.isDebug()) {
+          console.log('[wxo-sdk] Flow detected in HTTP stream, switching to WebSocket events');
+        }
+        yield _this7._consumeFromWebSocketBuffer(wsBuffer, session, messageId, isFirstDelta);
+        return;
+      }
+
+      // Simple agent: cleanup unused WS buffer
+      if (wsBuffer) wsBuffer.cleanup();
 
       // Signal stream complete
       _this7._triggerDeltaHandlers({
@@ -995,11 +1007,11 @@ class ChatManager {
    * @param {string} text - free text comment
    */
   sendFeedback(messageId, isPositive) {
-    var _arguments2 = arguments,
+    var _arguments3 = arguments,
       _this8 = this;
     return _asyncToGenerator(function* () {
-      var categories = _arguments2.length > 2 && _arguments2[2] !== undefined ? _arguments2[2] : [];
-      var text = _arguments2.length > 3 && _arguments2[3] !== undefined ? _arguments2[3] : '';
+      var categories = _arguments3.length > 2 && _arguments3[2] !== undefined ? _arguments3[2] : [];
+      var text = _arguments3.length > 3 && _arguments3[3] !== undefined ? _arguments3[3] : '';
       var webhookUrl = _this8.config.getFeedbackWebhookUrl();
       var session = _this8.sessions.get(_this8.currentAgentId);
       var agentConfig = _this8.config.getAgent(_this8.currentAgentId);

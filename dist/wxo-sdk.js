@@ -541,13 +541,8 @@
       // Note: user messages are returned to the caller for display.
       // onMessage handlers are reserved for agent responses only.
 
-      // Send to orchestrate/runs — WebSocket mode if connected, HTTP streaming as fallback
       try {
-        if (this.socketClient) {
-          await this._sendToRunsViaWebSocket(session, text);
-        } else {
-          await this._sendToRuns(session, text);
-        }
+        await this._sendToRuns(session, text);
       } catch (error) {
         console.error('[wxo-sdk] Failed to send message:', error);
         this._handleError(error);
@@ -598,117 +593,112 @@
       if (this.config.isDebug()) {
         console.log('[wxo-sdk] Sending to runs:', body);
       }
+
+      // Pre-register WS buffer BEFORE HTTP request to avoid missing early events.
+      // If the HTTP stream returns a "flow started" notification, we switch to consuming
+      // the WS buffer for the actual response. Simple agents produce no WS events so the
+      // buffer stays empty and is cleaned up after HTTP streaming completes.
+      const wsBuffer = this.socketClient && this.socketClient.isConnected() ? this._bufferWebSocketEvents(session) : null;
       const response = await this.httpClient.stream(path, body);
-      await this._handleStreamResponse(response, session);
+      await this._handleStreamResponse(response, session, wsBuffer);
     }
 
     /**
-     * Send message via /runs and receive response events via WebSocket.
-     * POST /runs triggers the agent run; actual events arrive on the Socket.IO connection.
+     * Buffer WebSocket WORKER_MESSAGE events for a session before HTTP response arrives.
+     * Returns a handle with consume(onEvent) and cleanup().
      * @private
      */
-    async _sendToRunsViaWebSocket(session, text) {
-      const path = '/mfe_home_archer/api/v1/orchestrate/runs?stream=true&stream_timeout=180000&multiple_content=true';
-      const body = {
-        message: {
-          role: 'user',
-          content: text,
-          additional_properties: {}
-        },
-        context: {},
-        agent_id: session.agent.agentId,
-        thread_id: session.threadId,
-        environment_id: session.agent.agentEnvironmentId || ''
-      };
-      if (this.config.isDebug()) {
-        console.log('[wxo-sdk] Sending to runs (WebSocket mode):', body);
-      }
-      const messageId = this._generateMessageId();
-      let isFirstDelta = true;
-      let agentText = '';
-      let wsResolve;
-      const wsPromise = new Promise((resolve, reject) => {
-        wsResolve = resolve;
-      });
+    _bufferWebSocketEvents(session) {
+      const buffered = [];
+      let liveConsumer = null;
       const handler = workerMsg => {
-        // Filter by thread_id (present in data.thread_id for event messages)
         const threadId = workerMsg.data?.thread_id || workerMsg.thread_id;
         if (threadId && threadId !== session.threadId) return;
+        if (!workerMsg.event) return; // skip tenant-notification messages
 
-        // Skip non-event messages (e.g. initial WORKER_MESSAGE with tenant_id/run)
-        if (!workerMsg.event) return;
-        const chunk = this._extractTextFromEvent(workerMsg);
-        if (chunk) {
-          agentText += chunk;
-          this._triggerDeltaHandlers({
-            messageId,
-            text: chunk,
-            isFirst: isFirstDelta,
-            isDone: false
-          });
-          isFirstDelta = false;
-        }
-        if (workerMsg.event === 'done') {
-          this.socketClient.removeWorkerMessageHandler(handler);
-          this._triggerDeltaHandlers({
-            messageId,
-            text: '',
-            isFirst: false,
-            isDone: true,
-            fullText: agentText
-          });
-          if (agentText) {
-            const agentMessage = {
-              id: messageId,
-              text: agentText,
-              sender: 'agent',
-              timestamp: Date.now()
-            };
-            session.messages.push(agentMessage);
-            this._triggerMessageHandlers(agentMessage);
-          }
-          if (this.config.isDebug()) {
-            console.log('[wxo-sdk] WebSocket stream complete. Agent response:', agentText);
-          }
-          wsResolve();
+        if (liveConsumer) {
+          liveConsumer(workerMsg);
+        } else {
+          buffered.push(workerMsg);
         }
       };
       this.socketClient.onWorkerMessage(handler);
-      try {
-        // POST /runs to trigger the agent run
-        const response = await this.httpClient.stream(path, body);
-        // Drain the HTTP response in background — actual events arrive via WebSocket
-        const reader = response.body.getReader();
-        (async () => {
-          try {
-            while (true) {
-              const {
-                done
-              } = await reader.read();
-              if (done) break;
-            }
-          } catch (_) {} finally {
-            reader.releaseLock();
-          }
-        })();
-      } catch (error) {
-        this.socketClient.removeWorkerMessageHandler(handler);
-        throw error;
-      }
-      await wsPromise;
+      return {
+        consume: onEvent => {
+          buffered.splice(0).forEach(e => onEvent(e));
+          liveConsumer = onEvent;
+        },
+        cleanup: () => {
+          this.socketClient.removeWorkerMessageHandler(handler);
+          buffered.length = 0;
+          liveConsumer = null;
+        }
+      };
     }
 
     /**
-     * Handle streaming response (SSE or chunked)
+     * Consume buffered + live WebSocket events and stream them as agent response.
+     * Called when HTTP stream detects a flow-started notification.
      * @private
      */
-    async _handleStreamResponse(response, session) {
+    async _consumeFromWebSocketBuffer(wsBuffer, session, messageId, isFirstDelta) {
+      let agentText = '';
+      let _isFirstDelta = isFirstDelta;
+      return new Promise(resolve => {
+        wsBuffer.consume(workerMsg => {
+          const chunk = this._extractTextFromEvent(workerMsg);
+          if (chunk) {
+            agentText += chunk;
+            this._triggerDeltaHandlers({
+              messageId,
+              text: chunk,
+              isFirst: _isFirstDelta,
+              isDone: false
+            });
+            _isFirstDelta = false;
+          }
+          if (workerMsg.event === 'done') {
+            wsBuffer.cleanup();
+            this._triggerDeltaHandlers({
+              messageId,
+              text: '',
+              isFirst: false,
+              isDone: true,
+              fullText: agentText
+            });
+            if (agentText) {
+              const agentMessage = {
+                id: messageId,
+                text: agentText,
+                sender: 'agent',
+                timestamp: Date.now()
+              };
+              session.messages.push(agentMessage);
+              this._triggerMessageHandlers(agentMessage);
+            }
+            if (this.config.isDebug()) {
+              console.log('[wxo-sdk] WebSocket stream complete. Agent response:', agentText);
+            }
+            resolve();
+          }
+        });
+      });
+    }
+
+    /**
+     * Handle streaming response (SSE or chunked).
+     * If wsBuffer is provided and a flow-started notification is detected in the HTTP stream,
+     * switches to consuming WebSocket events for the actual agent response.
+     * @private
+     */
+    async _handleStreamResponse(response, session, wsBuffer = null) {
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
       let agentText = '';
       const messageId = this._generateMessageId();
       let isFirstDelta = true;
+      let flowDetected = false;
       try {
         while (true) {
           const {
@@ -727,6 +717,10 @@
 
           for (const line of lines) {
             this._processStreamLine(line, text => {
+              if (text.toLowerCase().includes('new flow has started')) {
+                flowDetected = true;
+                return; // don't emit flow notification to UI
+              }
               agentText += text;
               this._triggerDeltaHandlers({
                 messageId,
@@ -745,6 +739,10 @@
             console.log('[wxo-sdk] Stream remaining buffer:', JSON.stringify(buffer));
           }
           this._processStreamLine(buffer, text => {
+            if (text.toLowerCase().includes('new flow has started')) {
+              flowDetected = true;
+              return;
+            }
             agentText += text;
             this._triggerDeltaHandlers({
               messageId,
@@ -758,6 +756,18 @@
       } finally {
         reader.releaseLock();
       }
+
+      // Flow agent: HTTP stream carried only the "flow started" notification; actual response arrives via WebSocket
+      if (flowDetected && wsBuffer) {
+        if (this.config.isDebug()) {
+          console.log('[wxo-sdk] Flow detected in HTTP stream, switching to WebSocket events');
+        }
+        await this._consumeFromWebSocketBuffer(wsBuffer, session, messageId, isFirstDelta);
+        return;
+      }
+
+      // Simple agent: cleanup unused WS buffer
+      if (wsBuffer) wsBuffer.cleanup();
 
       // Signal stream complete
       this._triggerDeltaHandlers({
