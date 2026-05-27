@@ -310,13 +310,6 @@ class WxOClient {
   }
 
   /** @private */
-  _isAWSPlatform() {
-    const hostURL = this.config.get('hostURL') || '';
-    return hostURL.includes('.dl.watson-orchestrate.ibm.com') ||
-           this.config.get('deploymentPlatform') === 'aws';
-  }
-
-  /** @private */
   _ensureInitialized() {
     if (!this.isInitialized) {
       throw new Error('SDK not initialized. Call init() first.');

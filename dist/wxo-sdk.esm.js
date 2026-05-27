@@ -664,7 +664,7 @@ class ChatManager {
       // Note: user messages are returned to the caller for display.
       // onMessage handlers are reserved for agent responses only.
 
-      // Send to orchestrate/runs — WebSocket mode for AWS, HTTP streaming for IBM Cloud
+      // Send to orchestrate/runs — WebSocket mode if connected, HTTP streaming as fallback
       try {
         if (_this3.socketClient) {
           yield _this3._sendToRunsViaWebSocket(session, text);
@@ -733,7 +733,7 @@ class ChatManager {
   }
 
   /**
-   * Send message via /runs and receive response events via WebSocket (AWS mode).
+   * Send message via /runs and receive response events via WebSocket.
    * POST /runs triggers the agent run; actual events arrive on the Socket.IO connection.
    * @private
    */
@@ -1178,8 +1178,8 @@ class ChatManager {
 /**
  * Minimal Socket.IO v4 / Engine.IO v4 WebSocket client
  *
- * Used for AWS-hosted watsonx Orchestrate, which delivers agent response events
- * via WebSocket instead of HTTP streaming.
+ * Used for watsonx Orchestrate environments where agent response events are delivered
+ * via WebSocket instead of HTTP streaming (e.g. flow-based agents).
  *
  * WebSocket URL: wss://{host}/mfe_home_archer/ws/?tenantId={orchestrationID}&userId={userId}&EIO=4&transport=websocket
  *
@@ -1618,12 +1618,6 @@ class WxOClient {
    */
   getConfig() {
     return this.config.getAll();
-  }
-
-  /** @private */
-  _isAWSPlatform() {
-    var hostURL = this.config.get('hostURL') || '';
-    return hostURL.includes('.dl.watson-orchestrate.ibm.com') || this.config.get('deploymentPlatform') === 'aws';
   }
 
   /** @private */

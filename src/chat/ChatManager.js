@@ -95,7 +95,7 @@ class ChatManager {
     // Note: user messages are returned to the caller for display.
     // onMessage handlers are reserved for agent responses only.
 
-    // Send to orchestrate/runs — WebSocket mode for AWS, HTTP streaming for IBM Cloud
+    // Send to orchestrate/runs — WebSocket mode if connected, HTTP streaming as fallback
     try {
       if (this.socketClient) {
         await this._sendToRunsViaWebSocket(session, text);
@@ -163,7 +163,7 @@ class ChatManager {
   }
 
   /**
-   * Send message via /runs and receive response events via WebSocket (AWS mode).
+   * Send message via /runs and receive response events via WebSocket.
    * POST /runs triggers the agent run; actual events arrive on the Socket.IO connection.
    * @private
    */

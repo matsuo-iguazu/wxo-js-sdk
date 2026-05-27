@@ -1,8 +1,8 @@
 /**
  * Minimal Socket.IO v4 / Engine.IO v4 WebSocket client
  *
- * Used for AWS-hosted watsonx Orchestrate, which delivers agent response events
- * via WebSocket instead of HTTP streaming.
+ * Used for watsonx Orchestrate environments where agent response events are delivered
+ * via WebSocket instead of HTTP streaming (e.g. flow-based agents).
  *
  * WebSocket URL: wss://{host}/mfe_home_archer/ws/?tenantId={orchestrationID}&userId={userId}&EIO=4&transport=websocket
  *
