@@ -2578,6 +2578,7 @@
         color: #525252;
         background: #f4f4f4;
         border-radius: 0 4px 4px 0;
+        font-style: normal;
       }
 
       /* Feedback - thumbs (inline in action row, no border) */
