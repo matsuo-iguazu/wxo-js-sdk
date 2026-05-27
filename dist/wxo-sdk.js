@@ -461,9 +461,10 @@
    *   x-ibm-wo-orchestrate-id, x-ibm-wo-user-id, x-ibm-wo-crn
    */
   class ChatManager {
-    constructor(config, httpClient) {
+    constructor(config, httpClient, socketClient = null) {
       this.config = config;
       this.httpClient = httpClient;
+      this.socketClient = socketClient;
       this.sessions = new Map(); // agentId -> session data
       this.currentAgentId = null;
       this.messageHandlers = [];
@@ -540,9 +541,13 @@
       // Note: user messages are returned to the caller for display.
       // onMessage handlers are reserved for agent responses only.
 
-      // Send to orchestrate/runs with streaming
+      // Send to orchestrate/runs — WebSocket mode for AWS, HTTP streaming for IBM Cloud
       try {
-        await this._sendToRuns(session, text);
+        if (this.socketClient) {
+          await this._sendToRunsViaWebSocket(session, text);
+        } else {
+          await this._sendToRuns(session, text);
+        }
       } catch (error) {
         console.error('[wxo-sdk] Failed to send message:', error);
         this._handleError(error);
@@ -595,6 +600,102 @@
       }
       const response = await this.httpClient.stream(path, body);
       await this._handleStreamResponse(response, session);
+    }
+
+    /**
+     * Send message via /runs and receive response events via WebSocket (AWS mode).
+     * POST /runs triggers the agent run; actual events arrive on the Socket.IO connection.
+     * @private
+     */
+    async _sendToRunsViaWebSocket(session, text) {
+      const path = '/mfe_home_archer/api/v1/orchestrate/runs?stream=true&stream_timeout=180000&multiple_content=true';
+      const body = {
+        message: {
+          role: 'user',
+          content: text,
+          additional_properties: {}
+        },
+        context: {},
+        agent_id: session.agent.agentId,
+        thread_id: session.threadId,
+        environment_id: session.agent.agentEnvironmentId || ''
+      };
+      if (this.config.isDebug()) {
+        console.log('[wxo-sdk] Sending to runs (WebSocket mode):', body);
+      }
+      const messageId = this._generateMessageId();
+      let isFirstDelta = true;
+      let agentText = '';
+      let wsResolve;
+      const wsPromise = new Promise((resolve, reject) => {
+        wsResolve = resolve;
+      });
+      const handler = workerMsg => {
+        // Filter by thread_id (present in data.thread_id for event messages)
+        const threadId = workerMsg.data?.thread_id || workerMsg.thread_id;
+        if (threadId && threadId !== session.threadId) return;
+
+        // Skip non-event messages (e.g. initial WORKER_MESSAGE with tenant_id/run)
+        if (!workerMsg.event) return;
+        const chunk = this._extractTextFromEvent(workerMsg);
+        if (chunk) {
+          agentText += chunk;
+          this._triggerDeltaHandlers({
+            messageId,
+            text: chunk,
+            isFirst: isFirstDelta,
+            isDone: false
+          });
+          isFirstDelta = false;
+        }
+        if (workerMsg.event === 'done') {
+          this.socketClient.removeWorkerMessageHandler(handler);
+          this._triggerDeltaHandlers({
+            messageId,
+            text: '',
+            isFirst: false,
+            isDone: true,
+            fullText: agentText
+          });
+          if (agentText) {
+            const agentMessage = {
+              id: messageId,
+              text: agentText,
+              sender: 'agent',
+              timestamp: Date.now()
+            };
+            session.messages.push(agentMessage);
+            this._triggerMessageHandlers(agentMessage);
+          }
+          if (this.config.isDebug()) {
+            console.log('[wxo-sdk] WebSocket stream complete. Agent response:', agentText);
+          }
+          wsResolve();
+        }
+      };
+      this.socketClient.onWorkerMessage(handler);
+      try {
+        // POST /runs to trigger the agent run
+        const response = await this.httpClient.stream(path, body);
+        // Drain the HTTP response in background — actual events arrive via WebSocket
+        const reader = response.body.getReader();
+        (async () => {
+          try {
+            while (true) {
+              const {
+                done
+              } = await reader.read();
+              if (done) break;
+            }
+          } catch (_) {} finally {
+            reader.releaseLock();
+          }
+        })();
+      } catch (error) {
+        this.socketClient.removeWorkerMessageHandler(handler);
+        throw error;
+      }
+      await wsPromise;
     }
 
     /**
@@ -918,6 +1019,124 @@
       this.deltaHandlers = [];
       this.errorHandlers = [];
       this.currentAgentId = null;
+      this.socketClient = null;
+    }
+  }
+
+  // Made with Bob
+
+  /**
+   * Minimal Socket.IO v4 / Engine.IO v4 WebSocket client
+   *
+   * Used for AWS-hosted watsonx Orchestrate, which delivers agent response events
+   * via WebSocket instead of HTTP streaming.
+   *
+   * WebSocket URL: wss://{host}/mfe_home_archer/ws/?tenantId={orchestrationID}&userId={userId}&EIO=4&transport=websocket
+   *
+   * Engine.IO v4 protocol:
+   *   Server→Client  0{...}  OPEN (JSON with pingInterval etc.) → reply with 40 (Socket.IO CONNECT)
+   *   Server→Client  40{...} Socket.IO CONNECT ACK
+   *   Server→Client  2       PING → reply with 3 (PONG)
+   *   Server→Client  42[...] Socket.IO EVENT
+   *
+   * Relevant Socket.IO event: WORKER_MESSAGE — same {id, event, data} structure as HTTP NDJSON.
+   */
+  class SocketClient {
+    constructor(config) {
+      this.config = config;
+      this.ws = null;
+      this.workerMessageHandlers = [];
+      this._connectResolve = null;
+      this._connectReject = null;
+    }
+    async connect(userId) {
+      const host = this.config.get('hostURL').replace(/^https?:\/\//, '');
+      const orchestrationID = this.config.get('orchestrationID');
+      const url = `wss://${host}/mfe_home_archer/ws/?tenantId=${encodeURIComponent(orchestrationID)}&userId=${encodeURIComponent(userId)}&EIO=4&transport=websocket`;
+      if (this.config.isDebug()) {
+        console.log('[wxo-sdk] SocketClient connecting:', url);
+      }
+      return new Promise((resolve, reject) => {
+        this._connectResolve = resolve;
+        this._connectReject = reject;
+        this.ws = new WebSocket(url);
+        this.ws.onmessage = e => this._onMessage(e.data);
+        this.ws.onerror = () => {
+          const err = new Error('WebSocket connection failed');
+          if (this._connectReject) {
+            this._connectReject(err);
+            this._connectResolve = null;
+            this._connectReject = null;
+          }
+        };
+        this.ws.onclose = () => {
+          if (this.config.isDebug()) {
+            console.log('[wxo-sdk] SocketClient closed');
+          }
+        };
+      });
+    }
+    _onMessage(data) {
+      if (this.config.isDebug()) {
+        const preview = data.length > 120 ? data.substring(0, 120) + '...' : data;
+        console.log('[wxo-sdk] SocketClient <', preview);
+      }
+
+      // Engine.IO PING → PONG
+      if (data === '2') {
+        if (this.ws.readyState === WebSocket.OPEN) this.ws.send('3');
+        return;
+      }
+
+      // Engine.IO OPEN → Socket.IO CONNECT to default namespace
+      if (data.charAt(0) === '0') {
+        if (this.ws.readyState === WebSocket.OPEN) this.ws.send('40');
+        return;
+      }
+
+      // Socket.IO CONNECT ACK → connected and ready
+      if (data.startsWith('40')) {
+        if (this._connectResolve) {
+          this._connectResolve();
+          this._connectResolve = null;
+          this._connectReject = null;
+        }
+        return;
+      }
+
+      // Socket.IO EVENT: 42["WORKER_MESSAGE", {...}]
+      if (data.startsWith('42')) {
+        try {
+          const [eventName, eventData] = JSON.parse(data.slice(2));
+          if (eventName === 'WORKER_MESSAGE') {
+            this.workerMessageHandlers.forEach(h => {
+              try {
+                h(eventData);
+              } catch (e) {
+                console.error('[wxo-sdk] SocketClient handler error:', e);
+              }
+            });
+          }
+        } catch (_) {}
+      }
+    }
+    onWorkerMessage(handler) {
+      this.workerMessageHandlers.push(handler);
+    }
+    removeWorkerMessageHandler(handler) {
+      this.workerMessageHandlers = this.workerMessageHandlers.filter(h => h !== handler);
+    }
+    isConnected() {
+      return this.ws && this.ws.readyState === WebSocket.OPEN;
+    }
+    disconnect() {
+      if (this.ws) {
+        this.ws.close();
+        this.ws = null;
+      }
+      this.workerMessageHandlers = [];
+      this._connectResolve = null;
+      this._connectReject = null;
     }
   }
 
@@ -932,6 +1151,7 @@
       this.httpClient = null;
       this.authManager = null;
       this.chatManager = null;
+      this.socketClient = null;
       this.isInitialized = false;
     }
 
@@ -960,8 +1180,21 @@
         // Set IBM custom headers on HTTP client
         this.httpClient.setIBMHeaders(this.authManager.getUserId());
 
+        // Establish WebSocket connection for flow-based agent response delivery.
+        // Works on both IBM Cloud and AWS; falls back to HTTP streaming if connection fails.
+        this.socketClient = new SocketClient(this.config);
+        try {
+          await this.socketClient.connect(this.authManager.getUserId());
+          if (this.config.isDebug()) {
+            console.log('[wxo-sdk] WebSocket connected');
+          }
+        } catch (e) {
+          console.warn('[wxo-sdk] WebSocket connection failed, falling back to HTTP streaming:', e.message);
+          this.socketClient = null;
+        }
+
         // Initialize chat manager
-        this.chatManager = new ChatManager(this.config, this.httpClient);
+        this.chatManager = new ChatManager(this.config, this.httpClient, this.socketClient);
         await this.chatManager.init();
         this.isInitialized = true;
         if (this.config.isDebug()) {
@@ -1178,6 +1411,10 @@
       if (this.chatManager) {
         this.chatManager.destroy();
       }
+      if (this.socketClient) {
+        this.socketClient.disconnect();
+        this.socketClient = null;
+      }
       if (this.authManager) {
         this.authManager.destroy();
       }
@@ -1201,6 +1438,12 @@
      */
     getConfig() {
       return this.config.getAll();
+    }
+
+    /** @private */
+    _isAWSPlatform() {
+      const hostURL = this.config.get('hostURL') || '';
+      return hostURL.includes('.dl.watson-orchestrate.ibm.com') || this.config.get('deploymentPlatform') === 'aws';
     }
 
     /** @private */
@@ -2334,6 +2577,13 @@
       .wxo-message--agent .wxo-message__content ul,
       .wxo-message--agent .wxo-message__content ol {
         margin: 4px 0; padding-left: 20px;
+      }
+      .wxo-message--agent .wxo-message__content blockquote {
+        margin: 4px 0; padding: 4px 12px;
+        border-left: 3px solid #8d8d8d;
+        color: #525252;
+        background: #f4f4f4;
+        border-radius: 0 4px 4px 0;
       }
 
       /* Feedback - thumbs (inline in action row, no border) */

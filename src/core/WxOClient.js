@@ -2,6 +2,7 @@ import Config from './Config.js';
 import HttpClient from '../api/HttpClient.js';
 import AuthManager from '../auth/AuthManager.js';
 import ChatManager from '../chat/ChatManager.js';
+import SocketClient from '../api/SocketClient.js';
 
 /**
  * Main client class for watsonx Orchestrate SDK
@@ -12,6 +13,7 @@ class WxOClient {
     this.httpClient = null;
     this.authManager = null;
     this.chatManager = null;
+    this.socketClient = null;
     this.isInitialized = false;
   }
 
@@ -41,8 +43,21 @@ class WxOClient {
       // Set IBM custom headers on HTTP client
       this.httpClient.setIBMHeaders(this.authManager.getUserId());
 
+      // Establish WebSocket connection for flow-based agent response delivery.
+      // Works on both IBM Cloud and AWS; falls back to HTTP streaming if connection fails.
+      this.socketClient = new SocketClient(this.config);
+      try {
+        await this.socketClient.connect(this.authManager.getUserId());
+        if (this.config.isDebug()) {
+          console.log('[wxo-sdk] WebSocket connected');
+        }
+      } catch (e) {
+        console.warn('[wxo-sdk] WebSocket connection failed, falling back to HTTP streaming:', e.message);
+        this.socketClient = null;
+      }
+
       // Initialize chat manager
-      this.chatManager = new ChatManager(this.config, this.httpClient);
+      this.chatManager = new ChatManager(this.config, this.httpClient, this.socketClient);
       await this.chatManager.init();
 
       this.isInitialized = true;
@@ -262,6 +277,11 @@ class WxOClient {
       this.chatManager.destroy();
     }
 
+    if (this.socketClient) {
+      this.socketClient.disconnect();
+      this.socketClient = null;
+    }
+
     if (this.authManager) {
       this.authManager.destroy();
     }
@@ -287,6 +307,13 @@ class WxOClient {
    */
   getConfig() {
     return this.config.getAll();
+  }
+
+  /** @private */
+  _isAWSPlatform() {
+    const hostURL = this.config.get('hostURL') || '';
+    return hostURL.includes('.dl.watson-orchestrate.ibm.com') ||
+           this.config.get('deploymentPlatform') === 'aws';
   }
 
   /** @private */

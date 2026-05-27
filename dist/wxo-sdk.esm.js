@@ -576,8 +576,10 @@ class AuthManager {
  */
 class ChatManager {
   constructor(config, httpClient) {
+    var socketClient = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : null;
     this.config = config;
     this.httpClient = httpClient;
+    this.socketClient = socketClient;
     this.sessions = new Map(); // agentId -> session data
     this.currentAgentId = null;
     this.messageHandlers = [];
@@ -662,9 +664,13 @@ class ChatManager {
       // Note: user messages are returned to the caller for display.
       // onMessage handlers are reserved for agent responses only.
 
-      // Send to orchestrate/runs with streaming
+      // Send to orchestrate/runs — WebSocket mode for AWS, HTTP streaming for IBM Cloud
       try {
-        yield _this3._sendToRuns(session, text);
+        if (_this3.socketClient) {
+          yield _this3._sendToRunsViaWebSocket(session, text);
+        } else {
+          yield _this3._sendToRuns(session, text);
+        }
       } catch (error) {
         console.error('[wxo-sdk] Failed to send message:', error);
         _this3._handleError(error);
@@ -727,17 +733,117 @@ class ChatManager {
   }
 
   /**
+   * Send message via /runs and receive response events via WebSocket (AWS mode).
+   * POST /runs triggers the agent run; actual events arrive on the Socket.IO connection.
+   * @private
+   */
+  _sendToRunsViaWebSocket(session, text) {
+    var _this6 = this;
+    return _asyncToGenerator(function* () {
+      var path = '/mfe_home_archer/api/v1/orchestrate/runs?stream=true&stream_timeout=180000&multiple_content=true';
+      var body = {
+        message: {
+          role: 'user',
+          content: text,
+          additional_properties: {}
+        },
+        context: {},
+        agent_id: session.agent.agentId,
+        thread_id: session.threadId,
+        environment_id: session.agent.agentEnvironmentId || ''
+      };
+      if (_this6.config.isDebug()) {
+        console.log('[wxo-sdk] Sending to runs (WebSocket mode):', body);
+      }
+      var messageId = _this6._generateMessageId();
+      var isFirstDelta = true;
+      var agentText = '';
+      var wsResolve;
+      var wsPromise = new Promise((resolve, reject) => {
+        wsResolve = resolve;
+      });
+      var handler = workerMsg => {
+        var _workerMsg$data;
+        // Filter by thread_id (present in data.thread_id for event messages)
+        var threadId = ((_workerMsg$data = workerMsg.data) === null || _workerMsg$data === void 0 ? void 0 : _workerMsg$data.thread_id) || workerMsg.thread_id;
+        if (threadId && threadId !== session.threadId) return;
+
+        // Skip non-event messages (e.g. initial WORKER_MESSAGE with tenant_id/run)
+        if (!workerMsg.event) return;
+        var chunk = _this6._extractTextFromEvent(workerMsg);
+        if (chunk) {
+          agentText += chunk;
+          _this6._triggerDeltaHandlers({
+            messageId,
+            text: chunk,
+            isFirst: isFirstDelta,
+            isDone: false
+          });
+          isFirstDelta = false;
+        }
+        if (workerMsg.event === 'done') {
+          _this6.socketClient.removeWorkerMessageHandler(handler);
+          _this6._triggerDeltaHandlers({
+            messageId,
+            text: '',
+            isFirst: false,
+            isDone: true,
+            fullText: agentText
+          });
+          if (agentText) {
+            var agentMessage = {
+              id: messageId,
+              text: agentText,
+              sender: 'agent',
+              timestamp: Date.now()
+            };
+            session.messages.push(agentMessage);
+            _this6._triggerMessageHandlers(agentMessage);
+          }
+          if (_this6.config.isDebug()) {
+            console.log('[wxo-sdk] WebSocket stream complete. Agent response:', agentText);
+          }
+          wsResolve();
+        }
+      };
+      _this6.socketClient.onWorkerMessage(handler);
+      try {
+        // POST /runs to trigger the agent run
+        var response = yield _this6.httpClient.stream(path, body);
+        // Drain the HTTP response in background — actual events arrive via WebSocket
+        var reader = response.body.getReader();
+        _asyncToGenerator(function* () {
+          try {
+            while (true) {
+              var {
+                done
+              } = yield reader.read();
+              if (done) break;
+            }
+          } catch (_) {} finally {
+            reader.releaseLock();
+          }
+        })();
+      } catch (error) {
+        _this6.socketClient.removeWorkerMessageHandler(handler);
+        throw error;
+      }
+      yield wsPromise;
+    })();
+  }
+
+  /**
    * Handle streaming response (SSE or chunked)
    * @private
    */
   _handleStreamResponse(response, session) {
-    var _this6 = this;
+    var _this7 = this;
     return _asyncToGenerator(function* () {
       var reader = response.body.getReader();
       var decoder = new TextDecoder();
       var buffer = '';
       var agentText = '';
-      var messageId = _this6._generateMessageId();
+      var messageId = _this7._generateMessageId();
       var isFirstDelta = true;
       try {
         while (true) {
@@ -756,9 +862,9 @@ class ChatManager {
           buffer = lines.pop(); // keep incomplete last line
 
           for (var line of lines) {
-            _this6._processStreamLine(line, text => {
+            _this7._processStreamLine(line, text => {
               agentText += text;
-              _this6._triggerDeltaHandlers({
+              _this7._triggerDeltaHandlers({
                 messageId,
                 text,
                 isFirst: isFirstDelta,
@@ -771,12 +877,12 @@ class ChatManager {
 
         // Process any remaining buffer content after stream ends
         if (buffer.trim()) {
-          if (_this6.config.isDebug()) {
+          if (_this7.config.isDebug()) {
             console.log('[wxo-sdk] Stream remaining buffer:', JSON.stringify(buffer));
           }
-          _this6._processStreamLine(buffer, text => {
+          _this7._processStreamLine(buffer, text => {
             agentText += text;
-            _this6._triggerDeltaHandlers({
+            _this7._triggerDeltaHandlers({
               messageId,
               text,
               isFirst: isFirstDelta,
@@ -790,7 +896,7 @@ class ChatManager {
       }
 
       // Signal stream complete
-      _this6._triggerDeltaHandlers({
+      _this7._triggerDeltaHandlers({
         messageId,
         text: '',
         isFirst: false,
@@ -807,9 +913,9 @@ class ChatManager {
           timestamp: Date.now()
         };
         session.messages.push(agentMessage);
-        _this6._triggerMessageHandlers(agentMessage);
+        _this7._triggerMessageHandlers(agentMessage);
       }
-      if (_this6.config.isDebug()) {
+      if (_this7.config.isDebug()) {
         console.log('[wxo-sdk] Stream complete. Agent response:', agentText);
       }
     })();
@@ -890,14 +996,14 @@ class ChatManager {
    */
   sendFeedback(messageId, isPositive) {
     var _arguments2 = arguments,
-      _this7 = this;
+      _this8 = this;
     return _asyncToGenerator(function* () {
       var categories = _arguments2.length > 2 && _arguments2[2] !== undefined ? _arguments2[2] : [];
       var text = _arguments2.length > 3 && _arguments2[3] !== undefined ? _arguments2[3] : '';
-      var webhookUrl = _this7.config.getFeedbackWebhookUrl();
-      var session = _this7.sessions.get(_this7.currentAgentId);
-      var agentConfig = _this7.config.getAgent(_this7.currentAgentId);
-      var feedbackUserInfo = _this7.config.getFeedbackUserInfo() || {};
+      var webhookUrl = _this8.config.getFeedbackWebhookUrl();
+      var session = _this8.sessions.get(_this8.currentAgentId);
+      var agentConfig = _this8.config.getAgent(_this8.currentAgentId);
+      var feedbackUserInfo = _this8.config.getFeedbackUserInfo() || {};
 
       // Find question/answer pair by locating the agent message and the user message before it
       var messages = (session === null || session === void 0 ? void 0 : session.messages) || [];
@@ -911,9 +1017,9 @@ class ChatManager {
         isPositive: isPositive ? 1 : 0,
         categories: Array.isArray(categories) ? categories.join(', ') : '',
         text,
-        agentId: (agentConfig === null || agentConfig === void 0 ? void 0 : agentConfig.agentId) || _this7.currentAgentId
+        agentId: (agentConfig === null || agentConfig === void 0 ? void 0 : agentConfig.agentId) || _this8.currentAgentId
       });
-      if (_this7.config.isDebug()) {
+      if (_this8.config.isDebug()) {
         console.log('[wxo-sdk] Feedback payload:', payload);
       }
       if (webhookUrl) {
@@ -963,27 +1069,27 @@ class ChatManager {
    * @param {string} agentId
    */
   endSession(agentId) {
-    var _this8 = this;
+    var _this9 = this;
     return _asyncToGenerator(function* () {
-      var session = _this8.sessions.get(agentId);
+      var session = _this9.sessions.get(agentId);
       if (!session || !session.threadId) {
-        _this8.sessions.delete(agentId);
+        _this9.sessions.delete(agentId);
         return;
       }
       try {
-        yield _this8.httpClient.patch("/mfe_home_archer/api/v1/threads/".concat(session.threadId), {
+        yield _this9.httpClient.patch("/mfe_home_archer/api/v1/threads/".concat(session.threadId), {
           status: 'closed'
         });
-        if (_this8.config.isDebug()) {
+        if (_this9.config.isDebug()) {
           console.log("[wxo-sdk] Thread closed: ".concat(session.threadId));
         }
       } catch (error) {
         console.warn('[wxo-sdk] Failed to close thread (non-fatal):', error.message);
       }
       session.isActive = false;
-      _this8.sessions.delete(agentId);
-      if (_this8.currentAgentId === agentId) {
-        _this8.currentAgentId = null;
+      _this9.sessions.delete(agentId);
+      if (_this9.currentAgentId === agentId) {
+        _this9.currentAgentId = null;
       }
     })();
   }
@@ -1063,6 +1169,127 @@ class ChatManager {
     this.deltaHandlers = [];
     this.errorHandlers = [];
     this.currentAgentId = null;
+    this.socketClient = null;
+  }
+}
+
+// Made with Bob
+
+/**
+ * Minimal Socket.IO v4 / Engine.IO v4 WebSocket client
+ *
+ * Used for AWS-hosted watsonx Orchestrate, which delivers agent response events
+ * via WebSocket instead of HTTP streaming.
+ *
+ * WebSocket URL: wss://{host}/mfe_home_archer/ws/?tenantId={orchestrationID}&userId={userId}&EIO=4&transport=websocket
+ *
+ * Engine.IO v4 protocol:
+ *   Server→Client  0{...}  OPEN (JSON with pingInterval etc.) → reply with 40 (Socket.IO CONNECT)
+ *   Server→Client  40{...} Socket.IO CONNECT ACK
+ *   Server→Client  2       PING → reply with 3 (PONG)
+ *   Server→Client  42[...] Socket.IO EVENT
+ *
+ * Relevant Socket.IO event: WORKER_MESSAGE — same {id, event, data} structure as HTTP NDJSON.
+ */
+class SocketClient {
+  constructor(config) {
+    this.config = config;
+    this.ws = null;
+    this.workerMessageHandlers = [];
+    this._connectResolve = null;
+    this._connectReject = null;
+  }
+  connect(userId) {
+    var _this = this;
+    return _asyncToGenerator(function* () {
+      var host = _this.config.get('hostURL').replace(/^https?:\/\//, '');
+      var orchestrationID = _this.config.get('orchestrationID');
+      var url = "wss://".concat(host, "/mfe_home_archer/ws/?tenantId=").concat(encodeURIComponent(orchestrationID), "&userId=").concat(encodeURIComponent(userId), "&EIO=4&transport=websocket");
+      if (_this.config.isDebug()) {
+        console.log('[wxo-sdk] SocketClient connecting:', url);
+      }
+      return new Promise((resolve, reject) => {
+        _this._connectResolve = resolve;
+        _this._connectReject = reject;
+        _this.ws = new WebSocket(url);
+        _this.ws.onmessage = e => _this._onMessage(e.data);
+        _this.ws.onerror = () => {
+          var err = new Error('WebSocket connection failed');
+          if (_this._connectReject) {
+            _this._connectReject(err);
+            _this._connectResolve = null;
+            _this._connectReject = null;
+          }
+        };
+        _this.ws.onclose = () => {
+          if (_this.config.isDebug()) {
+            console.log('[wxo-sdk] SocketClient closed');
+          }
+        };
+      });
+    })();
+  }
+  _onMessage(data) {
+    if (this.config.isDebug()) {
+      var preview = data.length > 120 ? data.substring(0, 120) + '...' : data;
+      console.log('[wxo-sdk] SocketClient <', preview);
+    }
+
+    // Engine.IO PING → PONG
+    if (data === '2') {
+      if (this.ws.readyState === WebSocket.OPEN) this.ws.send('3');
+      return;
+    }
+
+    // Engine.IO OPEN → Socket.IO CONNECT to default namespace
+    if (data.charAt(0) === '0') {
+      if (this.ws.readyState === WebSocket.OPEN) this.ws.send('40');
+      return;
+    }
+
+    // Socket.IO CONNECT ACK → connected and ready
+    if (data.startsWith('40')) {
+      if (this._connectResolve) {
+        this._connectResolve();
+        this._connectResolve = null;
+        this._connectReject = null;
+      }
+      return;
+    }
+
+    // Socket.IO EVENT: 42["WORKER_MESSAGE", {...}]
+    if (data.startsWith('42')) {
+      try {
+        var [eventName, eventData] = JSON.parse(data.slice(2));
+        if (eventName === 'WORKER_MESSAGE') {
+          this.workerMessageHandlers.forEach(h => {
+            try {
+              h(eventData);
+            } catch (e) {
+              console.error('[wxo-sdk] SocketClient handler error:', e);
+            }
+          });
+        }
+      } catch (_) {}
+    }
+  }
+  onWorkerMessage(handler) {
+    this.workerMessageHandlers.push(handler);
+  }
+  removeWorkerMessageHandler(handler) {
+    this.workerMessageHandlers = this.workerMessageHandlers.filter(h => h !== handler);
+  }
+  isConnected() {
+    return this.ws && this.ws.readyState === WebSocket.OPEN;
+  }
+  disconnect() {
+    if (this.ws) {
+      this.ws.close();
+      this.ws = null;
+    }
+    this.workerMessageHandlers = [];
+    this._connectResolve = null;
+    this._connectReject = null;
   }
 }
 
@@ -1077,6 +1304,7 @@ class WxOClient {
     this.httpClient = null;
     this.authManager = null;
     this.chatManager = null;
+    this.socketClient = null;
     this.isInitialized = false;
   }
 
@@ -1107,8 +1335,21 @@ class WxOClient {
         // Set IBM custom headers on HTTP client
         _this.httpClient.setIBMHeaders(_this.authManager.getUserId());
 
+        // Establish WebSocket connection for flow-based agent response delivery.
+        // Works on both IBM Cloud and AWS; falls back to HTTP streaming if connection fails.
+        _this.socketClient = new SocketClient(_this.config);
+        try {
+          yield _this.socketClient.connect(_this.authManager.getUserId());
+          if (_this.config.isDebug()) {
+            console.log('[wxo-sdk] WebSocket connected');
+          }
+        } catch (e) {
+          console.warn('[wxo-sdk] WebSocket connection failed, falling back to HTTP streaming:', e.message);
+          _this.socketClient = null;
+        }
+
         // Initialize chat manager
-        _this.chatManager = new ChatManager(_this.config, _this.httpClient);
+        _this.chatManager = new ChatManager(_this.config, _this.httpClient, _this.socketClient);
         yield _this.chatManager.init();
         _this.isInitialized = true;
         if (_this.config.isDebug()) {
@@ -1350,6 +1591,10 @@ class WxOClient {
     if (this.chatManager) {
       this.chatManager.destroy();
     }
+    if (this.socketClient) {
+      this.socketClient.disconnect();
+      this.socketClient = null;
+    }
     if (this.authManager) {
       this.authManager.destroy();
     }
@@ -1373,6 +1618,12 @@ class WxOClient {
    */
   getConfig() {
     return this.config.getAll();
+  }
+
+  /** @private */
+  _isAWSPlatform() {
+    var hostURL = this.config.get('hostURL') || '';
+    return hostURL.includes('.dl.watson-orchestrate.ibm.com') || this.config.get('deploymentPlatform') === 'aws';
   }
 
   /** @private */
@@ -2228,7 +2479,7 @@ class UIManager {
     var primaryColor = this.config.get('theme.primaryColor') || '#0f62fe';
     var style = document.createElement('style');
     style.id = 'wxo-sdk-styles';
-    style.textContent = "\n      #wxo-ui-container {\n        position: fixed;\n        bottom: 20px;\n        right: 20px;\n        z-index: 99999;\n        display: flex;\n        flex-direction: column-reverse;\n        align-items: flex-end;\n        gap: 10px;\n        font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;\n      }\n\n      /* Floating button */\n      .wxo-floating-btn {\n        width: 60px;\n        height: 60px;\n        border-radius: 50%;\n        background: ".concat(primaryColor, ";\n        display: flex;\n        align-items: center;\n        justify-content: center;\n        cursor: pointer;\n        box-shadow: 0 4px 12px rgba(0,0,0,0.25);\n        transition: transform 0.2s, box-shadow 0.2s;\n        flex-shrink: 0;\n      }\n      .wxo-floating-btn:hover {\n        transform: scale(1.05);\n        box-shadow: 0 6px 16px rgba(0,0,0,0.3);\n      }\n      .wxo-floating-btn--active {\n        background: #0043ce;\n      }\n\n      /* Agent selector rise animation */\n      @keyframes wxo-agent-rise {\n        0% {\n          opacity: 0;\n          transform: translateY(52px) rotate(90deg);\n        }\n        40% {\n          opacity: 1;\n        }\n        100% {\n          opacity: 1;\n          transform: translateY(0) rotate(0deg);\n        }\n      }\n\n      /* Agent selector */\n      .wxo-agent-selector {\n        flex-direction: column;\n        gap: 8px;\n        align-items: flex-end;\n      }\n      .wxo-agent-item {\n        display: flex;\n        align-items: center;\n        justify-content: flex-end;\n        background: #ebf0fa;\n        border-radius: 24px;\n        padding: 10px 18px;\n        cursor: pointer;\n        box-shadow: 0 3px 8px rgba(0,0,0,0.12);\n        white-space: nowrap;\n        transform-origin: right center;\n        animation: wxo-agent-rise 0.45s cubic-bezier(0.34, 1.3, 0.64, 1) both;\n      }\n      .wxo-agent-item:hover {\n        box-shadow: 0 4px 10px rgba(0,0,0,0.18);\n      }\n      .wxo-agent-item__label {\n        font-size: 14px;\n        font-weight: 500;\n        color: #161616;\n      }\n\n      /* Chat window */\n      .wxo-chat-window {\n        width: 380px;\n        height: 580px;\n        max-height: calc(100vh - 100px);\n        background: white;\n        border-radius: 12px;\n        box-shadow: 0 8px 32px rgba(0,0,0,0.2);\n        display: flex;\n        flex-direction: column;\n        overflow: hidden;\n        transition: width 0.3s, height 0.3s;\n        position: relative;\n      }\n      .wxo-chat-window--expanded {\n        width: 620px;\n        height: 720px;\n      }\n\n      /* Chat header */\n      .wxo-chat-header {\n        background: #ffffff;\n        color: #161616;\n        padding: 14px 16px;\n        display: flex;\n        align-items: center;\n        justify-content: space-between;\n        flex-shrink: 0;\n        border-bottom: 1px solid #e0e0e0;\n      }\n      .wxo-chat-header__left {\n        display: flex;\n        align-items: center;\n        gap: 4px;\n      }\n      .wxo-chat-header__title {\n        display: flex;\n        align-items: center;\n        gap: 8px;\n        font-weight: 700;\n        font-size: 15px;\n        color: #161616;\n      }\n      .wxo-chat-header__icon {\n        font-size: 20px;\n      }\n      .wxo-chat-header__actions {\n        display: flex;\n        gap: 4px;\n      }\n      .wxo-btn-icon {\n        background: none;\n        border: none;\n        color: #525252;\n        cursor: pointer;\n        font-size: 18px;\n        padding: 4px 6px;\n        border-radius: 4px;\n        line-height: 1;\n        transition: background 0.15s, color 0.15s;\n      }\n      .wxo-btn-icon:hover {\n        background: #f4f4f4;\n        color: #161616;\n      }\n\n      /* Messages area - gradient: white top \u2192 #ebf0fa bottom */\n      .wxo-chat-messages {\n        flex: 1;\n        overflow-y: auto;\n        padding: 16px 16px 24px;\n        background: linear-gradient(to bottom, #ffffff 0%, #ffffff 50%, #ebf0fa 100%);\n        display: flex;\n        flex-direction: column;\n        gap: 12px;\n      }\n\n      /* Individual messages */\n      .wxo-message {\n        max-width: 80%;\n        display: flex;\n        flex-direction: column;\n      }\n      .wxo-message--user {\n        align-self: flex-end;\n        align-items: flex-end;\n      }\n      .wxo-message--agent {\n        align-self: flex-start;\n        align-items: flex-start;\n      }\n\n      /* Sender name + time above bubble */\n      .wxo-message__meta {\n        font-size: 11px;\n        color: #161616;\n        margin-bottom: 3px;\n        padding: 0 4px;\n        display: flex;\n        gap: 6px;\n        align-items: baseline;\n      }\n      .wxo-message--user .wxo-message__meta { justify-content: flex-end; }\n      .wxo-message--agent .wxo-message__meta { justify-content: flex-start; }\n      .wxo-message__meta-name { font-weight: 700; font-size: 13px; }\n      .wxo-message__meta-time { font-weight: 400; color: #525252; }\n\n      .wxo-message__content {\n        padding: 10px 14px;\n        border-radius: 12px;\n        font-size: 14px;\n        line-height: 1.5;\n      }\n      .wxo-message--user .wxo-message__content {\n        background: #e0e0e0;\n        color: #161616;\n        border-top-right-radius: 4px;\n      }\n      .wxo-message--agent .wxo-message__content {\n        background: transparent;\n        color: #161616;\n        border: none;\n        padding-left: 0;\n      }\n\n      /* Loading dots */\n      @keyframes wxo-blink {\n        0%, 80%, 100% { opacity: 0.2; }\n        40% { opacity: 1; }\n      }\n      .wxo-loading-dots span {\n        animation: wxo-blink 1.4s infinite;\n        display: inline-block;\n        margin: 0 1px;\n        font-size: 20px;\n        line-height: 1;\n      }\n      .wxo-loading-dots span:nth-child(2) { animation-delay: 0.2s; }\n      .wxo-loading-dots span:nth-child(3) { animation-delay: 0.4s; }\n\n      /* Window-open loading spinner */\n      .wxo-window-loading {\n        display: flex; justify-content: center; align-items: center; flex: 1; padding: 40px;\n      }\n      .wxo-window-loading::after {\n        content: ''; width: 28px; height: 28px;\n        border: 3px solid #e0e0e0; border-top-color: #8d8d8d;\n        border-radius: 50%; animation: wxo-spin 1.4s linear infinite;\n      }\n      @keyframes wxo-spin { to { transform: rotate(360deg); } }\n\n      /* Markdown inside agent messages */\n      .wxo-message--agent .wxo-message__content p { margin: 4px 0; }\n      .wxo-message--agent .wxo-message__content h1,\n      .wxo-message--agent .wxo-message__content h2,\n      .wxo-message--agent .wxo-message__content h3 {\n        margin: 6px 0 3px; font-size: 1em; font-weight: 600;\n      }\n      .wxo-message--agent .wxo-message__content table {\n        border-collapse: collapse; width: 100%; margin: 6px 0; font-size: 13px;\n      }\n      .wxo-message--agent .wxo-message__content th,\n      .wxo-message--agent .wxo-message__content td {\n        border: 1px solid #ccc; padding: 4px 8px; text-align: left;\n      }\n      .wxo-message--agent .wxo-message__content th {\n        background: #f0f0f0; font-weight: 600;\n      }\n      .wxo-message--agent .wxo-message__content code {\n        background: #f4f4f4; padding: 1px 4px; border-radius: 3px;\n        font-family: monospace; font-size: 0.9em;\n      }\n      .wxo-message--agent .wxo-message__content pre {\n        background: #f4f4f4; padding: 10px; border-radius: 4px;\n        overflow-x: auto; margin: 4px 0;\n      }\n      .wxo-message--agent .wxo-message__content ul,\n      .wxo-message--agent .wxo-message__content ol {\n        margin: 4px 0; padding-left: 20px;\n      }\n\n      /* Feedback - thumbs (inline in action row, no border) */\n      .wxo-feedback { margin-top: 4px; }\n      .wxo-feedback__btn {\n        background: none;\n        border: none;\n        border-radius: 4px;\n        padding: 3px 4px;\n        height: 24px;\n        cursor: pointer;\n        display: flex;\n        align-items: center;\n        transition: background 0.15s;\n      }\n      .wxo-feedback__btn:hover { background: #f0f0f0; }\n\n      /* Feedback - detail panel */\n      .wxo-feedback__panel {\n        display: flex;\n        flex-direction: column;\n        gap: 10px;\n        border: 1px solid #e0e0e0;\n        border-radius: 8px;\n        padding: 14px 14px 0;\n        background: white;\n      }\n      .wxo-feedback__panel-header {\n        display: flex;\n        align-items: center;\n        gap: 8px;\n      }\n      .wxo-feedback__selected { display: flex; align-items: center; }\n      .wxo-feedback__panel-title {\n        font-size: 13px;\n        font-weight: 700;\n        color: #161616;\n      }\n      .wxo-feedback__panel-subtitle {\n        font-size: 12px;\n        color: #525252;\n        margin-top: -4px;\n      }\n      .wxo-feedback__pills {\n        display: flex;\n        flex-wrap: wrap;\n        gap: 6px;\n      }\n      .wxo-feedback__pill {\n        background: white;\n        border: 1px solid #c6c6c6;\n        border-radius: 16px;\n        padding: 4px 12px;\n        font-size: 12px;\n        font-family: inherit;\n        cursor: pointer;\n        transition: background 0.15s, border-color 0.15s, color 0.15s;\n        display: flex;\n        align-items: center;\n        justify-content: center;\n      }\n      .wxo-feedback__pill:hover { background: #f4f4f4; }\n      .wxo-feedback__pill--selected {\n        background: #edf4ff;\n        border-color: ").concat(primaryColor, ";\n        color: ").concat(primaryColor, ";\n      }\n      .wxo-feedback__comment {\n        width: 100%;\n        border: 1px solid #c6c6c6;\n        border-radius: 6px;\n        padding: 8px 10px;\n        font-size: 12px;\n        font-family: inherit;\n        resize: none;\n        box-sizing: border-box;\n        outline: none;\n      }\n      .wxo-feedback__comment:focus { border-color: ").concat(primaryColor, "; }\n      .wxo-feedback__disclaimer {\n        font-size: 11px;\n        color: #525252;\n        line-height: 1.4;\n      }\n      .wxo-feedback__panel-actions {\n        display: flex;\n        margin: 0 -14px;\n        border-top: 1px solid #e0e0e0;\n        overflow: hidden;\n        border-bottom-left-radius: 7px;\n        border-bottom-right-radius: 7px;\n        min-height: 40px;\n      }\n      .wxo-feedback__cancel {\n        flex: 1;\n        background: white;\n        border: none !important;\n        border-right: 1px solid #e0e0e0 !important;\n        border-radius: 0;\n        padding: 0 12px;\n        height: 40px;\n        min-height: 40px;\n        font-size: 12px;\n        font-family: inherit;\n        cursor: pointer;\n        transition: background 0.15s;\n        box-sizing: border-box !important;\n        line-height: 40px;\n      }\n      .wxo-feedback__cancel:hover { background: #f4f4f4; }\n      .wxo-feedback__submit {\n        flex: 1;\n        background: ").concat(primaryColor, ";\n        color: white;\n        border: none !important;\n        border-radius: 0;\n        padding: 0 12px;\n        height: 40px;\n        min-height: 40px;\n        font-size: 12px;\n        font-family: inherit;\n        cursor: pointer;\n        transition: background 0.15s;\n        box-sizing: border-box !important;\n        line-height: 40px;\n      }\n      .wxo-feedback__submit:hover { background: #0043ce; }\n      .wxo-feedback__thanks {\n        font-size: 12px;\n        color: #525252;\n      }\n\n      /* Input area */\n      .wxo-chat-input-area {\n        padding: 0;\n        border-top: 1px solid #e0e0e0;\n        background: white;\n        flex-shrink: 0;\n      }\n      .wxo-chat-input-area:focus-within {\n        border-top-color: #0f62fe;\n      }\n      .wxo-input-wrap {\n        position: relative;\n      }\n      .wxo-chat-input {\n        display: block;\n        width: 100%;\n        margin: 0;\n        padding: 12px 52px 12px 16px;\n        border: none !important;\n        border-radius: 0 0 12px 12px;\n        font-size: 14px;\n        outline: none !important;\n        box-shadow: none !important;\n        font-family: inherit;\n        box-sizing: border-box;\n        resize: none;\n        overflow-y: hidden;\n        min-height: 52px;\n        max-height: 160px;\n        line-height: 1.5;\n      }\n      .wxo-chat-window .wxo-chat-input:focus {\n        outline: none !important;\n        border: none !important;\n        box-shadow: inset 0 0 0 2px #0f62fe !important;\n      }\n      .wxo-chat-input:disabled { background: #f4f4f4; }\n      .wxo-chat-send {\n        position: absolute;\n        right: 14px;\n        bottom: 13px;\n        width: 26px;\n        height: 26px;\n        background: #c6c6c6;\n        color: #ffffff;\n        border: none;\n        border-radius: 50%;\n        display: flex;\n        align-items: center;\n        justify-content: center;\n        cursor: default;\n        transition: background 0.15s;\n        flex-shrink: 0;\n      }\n      .wxo-chat-send:not(:disabled) {\n        background: #161616;\n        cursor: pointer;\n      }\n      .wxo-chat-send:not(:disabled):hover { background: #393939; }\n\n      /* Scroll-to-bottom button */\n      .wxo-scroll-bottom {\n        position: absolute;\n        bottom: 66px;\n        left: 50%;\n        transform: translateX(-50%);\n        width: 32px;\n        height: 32px;\n        border-radius: 50%;\n        background: #161616;\n        border: none;\n        box-shadow: 0 2px 8px rgba(0,0,0,0.25);\n        cursor: pointer;\n        display: flex;\n        align-items: center;\n        justify-content: center;\n        color: #ffffff;\n        transition: box-shadow 0.15s, background 0.15s;\n        z-index: 10;\n      }\n      .wxo-scroll-bottom:hover {\n        background: #393939;\n        box-shadow: 0 3px 10px rgba(0,0,0,0.3);\n      }\n\n      /* Welcome screen */\n      .wxo-welcome {\n        display: flex;\n        flex-direction: column;\n        align-items: flex-start;\n        padding: 24px 20px 16px;\n        gap: 0;\n        flex: 1;\n        overflow-y: auto;\n      }\n      .wxo-welcome__greeting {\n        font-size: 28px;\n        font-weight: 400;\n        color: #161616;\n        margin-bottom: 8px;\n        line-height: 1.25;\n      }\n      .wxo-welcome__description {\n        font-size: 13px;\n        color: #525252;\n        line-height: 1.6;\n        margin-bottom: 24px;\n      }\n      .wxo-welcome__prompts-label {\n        font-size: 11px;\n        font-weight: 600;\n        color: #525252;\n        text-transform: uppercase;\n        letter-spacing: 0.08em;\n        margin-bottom: 10px;\n      }\n      .wxo-welcome__prompts {\n        display: flex;\n        flex-direction: column;\n        gap: 8px;\n        width: 100%;\n      }\n      .wxo-welcome__prompt {\n        background: white;\n        border: 1px solid #e0e0e0;\n        border-radius: 8px;\n        padding: 14px 16px;\n        font-size: 13px;\n        font-family: inherit;\n        color: #161616;\n        cursor: pointer;\n        text-align: left;\n        line-height: 1.5;\n        transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;\n        display: flex;\n        flex-direction: column;\n        align-items: flex-start;\n        min-height: 96px;\n        overflow: hidden;\n      }\n      .wxo-welcome__prompt:hover {\n        background: #f4f4f4;\n        border-color: #8d8d8d;\n        box-shadow: 0 2px 6px rgba(0,0,0,0.08);\n      }\n      .wxo-welcome__prompt-text {\n        display: -webkit-box;\n        -webkit-line-clamp: 3;\n        -webkit-box-orient: vertical;\n        overflow: hidden;\n        width: 100%;\n        margin-bottom: auto;\n      }\n      .wxo-welcome__prompt-arrow {\n        color: ").concat(primaryColor, ";\n        font-size: 14px;\n        line-height: 1;\n        align-self: flex-end;\n        margin-top: 8px;\n      }\n\n      /* Message action row (copy button) */\n      .wxo-message__actions {\n        display: flex;\n        gap: 4px;\n        margin-top: 4px;\n        padding: 0 4px;\n        opacity: 0;\n        transition: opacity 0.15s;\n      }\n      .wxo-message--agent .wxo-message__actions { opacity: 1; }\n      .wxo-message--user .wxo-message__actions { justify-content: flex-end; }\n      .wxo-message--user:hover .wxo-message__actions { opacity: 1; }\n      .wxo-copy-btn {\n        background: none;\n        border: none;\n        border-radius: 4px;\n        padding: 3px 6px;\n        height: 24px;\n        cursor: pointer;\n        color: #525252;\n        display: flex;\n        align-items: center;\n        transition: background 0.15s, color 0.15s;\n      }\n      .wxo-copy-btn:hover {\n        background: #f4f4f4;\n        color: #161616;\n      }\n\n      /* Custom tooltip (data-tooltip) */\n      [data-tooltip] { position: relative; }\n      [data-tooltip]::after {\n        content: attr(data-tooltip);\n        position: absolute;\n        bottom: calc(100% + 8px);\n        left: 50%;\n        transform: translateX(-50%);\n        background: #161616;\n        color: #ffffff;\n        font-size: 11px;\n        line-height: 1;\n        padding: 4px 8px;\n        border-radius: 4px;\n        white-space: nowrap;\n        pointer-events: none;\n        opacity: 0;\n        transition: opacity 0.1s;\n        z-index: 100;\n      }\n      [data-tooltip]::before {\n        content: '';\n        position: absolute;\n        bottom: calc(100% + 4px);\n        left: 50%;\n        transform: translateX(-50%);\n        border: 4px solid transparent;\n        border-top-color: #161616;\n        pointer-events: none;\n        opacity: 0;\n        transition: opacity 0.1s;\n        z-index: 100;\n      }\n      [data-tooltip]:hover::after,\n      [data-tooltip]:hover::before {\n        opacity: 1;\n        transition-delay: 0.1s;\n      }\n      /* These must stay absolutely positioned (overrides [data-tooltip]{position:relative}) */\n      .wxo-input-wrap .wxo-chat-send { position: absolute; }\n      .wxo-chat-window .wxo-scroll-bottom { position: absolute; }\n\n      /* Tooltip below variant (for header buttons at top of window) */\n      .tooltip-below[data-tooltip]::after {\n        bottom: auto;\n        top: calc(100% + 8px);\n      }\n      .tooltip-below[data-tooltip]::before {\n        bottom: auto;\n        top: calc(100% + 4px);\n        border-top-color: transparent;\n        border-bottom-color: #161616;\n      }\n    ");
+    style.textContent = "\n      #wxo-ui-container {\n        position: fixed;\n        bottom: 20px;\n        right: 20px;\n        z-index: 99999;\n        display: flex;\n        flex-direction: column-reverse;\n        align-items: flex-end;\n        gap: 10px;\n        font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;\n      }\n\n      /* Floating button */\n      .wxo-floating-btn {\n        width: 60px;\n        height: 60px;\n        border-radius: 50%;\n        background: ".concat(primaryColor, ";\n        display: flex;\n        align-items: center;\n        justify-content: center;\n        cursor: pointer;\n        box-shadow: 0 4px 12px rgba(0,0,0,0.25);\n        transition: transform 0.2s, box-shadow 0.2s;\n        flex-shrink: 0;\n      }\n      .wxo-floating-btn:hover {\n        transform: scale(1.05);\n        box-shadow: 0 6px 16px rgba(0,0,0,0.3);\n      }\n      .wxo-floating-btn--active {\n        background: #0043ce;\n      }\n\n      /* Agent selector rise animation */\n      @keyframes wxo-agent-rise {\n        0% {\n          opacity: 0;\n          transform: translateY(52px) rotate(90deg);\n        }\n        40% {\n          opacity: 1;\n        }\n        100% {\n          opacity: 1;\n          transform: translateY(0) rotate(0deg);\n        }\n      }\n\n      /* Agent selector */\n      .wxo-agent-selector {\n        flex-direction: column;\n        gap: 8px;\n        align-items: flex-end;\n      }\n      .wxo-agent-item {\n        display: flex;\n        align-items: center;\n        justify-content: flex-end;\n        background: #ebf0fa;\n        border-radius: 24px;\n        padding: 10px 18px;\n        cursor: pointer;\n        box-shadow: 0 3px 8px rgba(0,0,0,0.12);\n        white-space: nowrap;\n        transform-origin: right center;\n        animation: wxo-agent-rise 0.45s cubic-bezier(0.34, 1.3, 0.64, 1) both;\n      }\n      .wxo-agent-item:hover {\n        box-shadow: 0 4px 10px rgba(0,0,0,0.18);\n      }\n      .wxo-agent-item__label {\n        font-size: 14px;\n        font-weight: 500;\n        color: #161616;\n      }\n\n      /* Chat window */\n      .wxo-chat-window {\n        width: 380px;\n        height: 580px;\n        max-height: calc(100vh - 100px);\n        background: white;\n        border-radius: 12px;\n        box-shadow: 0 8px 32px rgba(0,0,0,0.2);\n        display: flex;\n        flex-direction: column;\n        overflow: hidden;\n        transition: width 0.3s, height 0.3s;\n        position: relative;\n      }\n      .wxo-chat-window--expanded {\n        width: 620px;\n        height: 720px;\n      }\n\n      /* Chat header */\n      .wxo-chat-header {\n        background: #ffffff;\n        color: #161616;\n        padding: 14px 16px;\n        display: flex;\n        align-items: center;\n        justify-content: space-between;\n        flex-shrink: 0;\n        border-bottom: 1px solid #e0e0e0;\n      }\n      .wxo-chat-header__left {\n        display: flex;\n        align-items: center;\n        gap: 4px;\n      }\n      .wxo-chat-header__title {\n        display: flex;\n        align-items: center;\n        gap: 8px;\n        font-weight: 700;\n        font-size: 15px;\n        color: #161616;\n      }\n      .wxo-chat-header__icon {\n        font-size: 20px;\n      }\n      .wxo-chat-header__actions {\n        display: flex;\n        gap: 4px;\n      }\n      .wxo-btn-icon {\n        background: none;\n        border: none;\n        color: #525252;\n        cursor: pointer;\n        font-size: 18px;\n        padding: 4px 6px;\n        border-radius: 4px;\n        line-height: 1;\n        transition: background 0.15s, color 0.15s;\n      }\n      .wxo-btn-icon:hover {\n        background: #f4f4f4;\n        color: #161616;\n      }\n\n      /* Messages area - gradient: white top \u2192 #ebf0fa bottom */\n      .wxo-chat-messages {\n        flex: 1;\n        overflow-y: auto;\n        padding: 16px 16px 24px;\n        background: linear-gradient(to bottom, #ffffff 0%, #ffffff 50%, #ebf0fa 100%);\n        display: flex;\n        flex-direction: column;\n        gap: 12px;\n      }\n\n      /* Individual messages */\n      .wxo-message {\n        max-width: 80%;\n        display: flex;\n        flex-direction: column;\n      }\n      .wxo-message--user {\n        align-self: flex-end;\n        align-items: flex-end;\n      }\n      .wxo-message--agent {\n        align-self: flex-start;\n        align-items: flex-start;\n      }\n\n      /* Sender name + time above bubble */\n      .wxo-message__meta {\n        font-size: 11px;\n        color: #161616;\n        margin-bottom: 3px;\n        padding: 0 4px;\n        display: flex;\n        gap: 6px;\n        align-items: baseline;\n      }\n      .wxo-message--user .wxo-message__meta { justify-content: flex-end; }\n      .wxo-message--agent .wxo-message__meta { justify-content: flex-start; }\n      .wxo-message__meta-name { font-weight: 700; font-size: 13px; }\n      .wxo-message__meta-time { font-weight: 400; color: #525252; }\n\n      .wxo-message__content {\n        padding: 10px 14px;\n        border-radius: 12px;\n        font-size: 14px;\n        line-height: 1.5;\n      }\n      .wxo-message--user .wxo-message__content {\n        background: #e0e0e0;\n        color: #161616;\n        border-top-right-radius: 4px;\n      }\n      .wxo-message--agent .wxo-message__content {\n        background: transparent;\n        color: #161616;\n        border: none;\n        padding-left: 0;\n      }\n\n      /* Loading dots */\n      @keyframes wxo-blink {\n        0%, 80%, 100% { opacity: 0.2; }\n        40% { opacity: 1; }\n      }\n      .wxo-loading-dots span {\n        animation: wxo-blink 1.4s infinite;\n        display: inline-block;\n        margin: 0 1px;\n        font-size: 20px;\n        line-height: 1;\n      }\n      .wxo-loading-dots span:nth-child(2) { animation-delay: 0.2s; }\n      .wxo-loading-dots span:nth-child(3) { animation-delay: 0.4s; }\n\n      /* Window-open loading spinner */\n      .wxo-window-loading {\n        display: flex; justify-content: center; align-items: center; flex: 1; padding: 40px;\n      }\n      .wxo-window-loading::after {\n        content: ''; width: 28px; height: 28px;\n        border: 3px solid #e0e0e0; border-top-color: #8d8d8d;\n        border-radius: 50%; animation: wxo-spin 1.4s linear infinite;\n      }\n      @keyframes wxo-spin { to { transform: rotate(360deg); } }\n\n      /* Markdown inside agent messages */\n      .wxo-message--agent .wxo-message__content p { margin: 4px 0; }\n      .wxo-message--agent .wxo-message__content h1,\n      .wxo-message--agent .wxo-message__content h2,\n      .wxo-message--agent .wxo-message__content h3 {\n        margin: 6px 0 3px; font-size: 1em; font-weight: 600;\n      }\n      .wxo-message--agent .wxo-message__content table {\n        border-collapse: collapse; width: 100%; margin: 6px 0; font-size: 13px;\n      }\n      .wxo-message--agent .wxo-message__content th,\n      .wxo-message--agent .wxo-message__content td {\n        border: 1px solid #ccc; padding: 4px 8px; text-align: left;\n      }\n      .wxo-message--agent .wxo-message__content th {\n        background: #f0f0f0; font-weight: 600;\n      }\n      .wxo-message--agent .wxo-message__content code {\n        background: #f4f4f4; padding: 1px 4px; border-radius: 3px;\n        font-family: monospace; font-size: 0.9em;\n      }\n      .wxo-message--agent .wxo-message__content pre {\n        background: #f4f4f4; padding: 10px; border-radius: 4px;\n        overflow-x: auto; margin: 4px 0;\n      }\n      .wxo-message--agent .wxo-message__content ul,\n      .wxo-message--agent .wxo-message__content ol {\n        margin: 4px 0; padding-left: 20px;\n      }\n      .wxo-message--agent .wxo-message__content blockquote {\n        margin: 4px 0; padding: 4px 12px;\n        border-left: 3px solid #8d8d8d;\n        color: #525252;\n        background: #f4f4f4;\n        border-radius: 0 4px 4px 0;\n      }\n\n      /* Feedback - thumbs (inline in action row, no border) */\n      .wxo-feedback { margin-top: 4px; }\n      .wxo-feedback__btn {\n        background: none;\n        border: none;\n        border-radius: 4px;\n        padding: 3px 4px;\n        height: 24px;\n        cursor: pointer;\n        display: flex;\n        align-items: center;\n        transition: background 0.15s;\n      }\n      .wxo-feedback__btn:hover { background: #f0f0f0; }\n\n      /* Feedback - detail panel */\n      .wxo-feedback__panel {\n        display: flex;\n        flex-direction: column;\n        gap: 10px;\n        border: 1px solid #e0e0e0;\n        border-radius: 8px;\n        padding: 14px 14px 0;\n        background: white;\n      }\n      .wxo-feedback__panel-header {\n        display: flex;\n        align-items: center;\n        gap: 8px;\n      }\n      .wxo-feedback__selected { display: flex; align-items: center; }\n      .wxo-feedback__panel-title {\n        font-size: 13px;\n        font-weight: 700;\n        color: #161616;\n      }\n      .wxo-feedback__panel-subtitle {\n        font-size: 12px;\n        color: #525252;\n        margin-top: -4px;\n      }\n      .wxo-feedback__pills {\n        display: flex;\n        flex-wrap: wrap;\n        gap: 6px;\n      }\n      .wxo-feedback__pill {\n        background: white;\n        border: 1px solid #c6c6c6;\n        border-radius: 16px;\n        padding: 4px 12px;\n        font-size: 12px;\n        font-family: inherit;\n        cursor: pointer;\n        transition: background 0.15s, border-color 0.15s, color 0.15s;\n        display: flex;\n        align-items: center;\n        justify-content: center;\n      }\n      .wxo-feedback__pill:hover { background: #f4f4f4; }\n      .wxo-feedback__pill--selected {\n        background: #edf4ff;\n        border-color: ").concat(primaryColor, ";\n        color: ").concat(primaryColor, ";\n      }\n      .wxo-feedback__comment {\n        width: 100%;\n        border: 1px solid #c6c6c6;\n        border-radius: 6px;\n        padding: 8px 10px;\n        font-size: 12px;\n        font-family: inherit;\n        resize: none;\n        box-sizing: border-box;\n        outline: none;\n      }\n      .wxo-feedback__comment:focus { border-color: ").concat(primaryColor, "; }\n      .wxo-feedback__disclaimer {\n        font-size: 11px;\n        color: #525252;\n        line-height: 1.4;\n      }\n      .wxo-feedback__panel-actions {\n        display: flex;\n        margin: 0 -14px;\n        border-top: 1px solid #e0e0e0;\n        overflow: hidden;\n        border-bottom-left-radius: 7px;\n        border-bottom-right-radius: 7px;\n        min-height: 40px;\n      }\n      .wxo-feedback__cancel {\n        flex: 1;\n        background: white;\n        border: none !important;\n        border-right: 1px solid #e0e0e0 !important;\n        border-radius: 0;\n        padding: 0 12px;\n        height: 40px;\n        min-height: 40px;\n        font-size: 12px;\n        font-family: inherit;\n        cursor: pointer;\n        transition: background 0.15s;\n        box-sizing: border-box !important;\n        line-height: 40px;\n      }\n      .wxo-feedback__cancel:hover { background: #f4f4f4; }\n      .wxo-feedback__submit {\n        flex: 1;\n        background: ").concat(primaryColor, ";\n        color: white;\n        border: none !important;\n        border-radius: 0;\n        padding: 0 12px;\n        height: 40px;\n        min-height: 40px;\n        font-size: 12px;\n        font-family: inherit;\n        cursor: pointer;\n        transition: background 0.15s;\n        box-sizing: border-box !important;\n        line-height: 40px;\n      }\n      .wxo-feedback__submit:hover { background: #0043ce; }\n      .wxo-feedback__thanks {\n        font-size: 12px;\n        color: #525252;\n      }\n\n      /* Input area */\n      .wxo-chat-input-area {\n        padding: 0;\n        border-top: 1px solid #e0e0e0;\n        background: white;\n        flex-shrink: 0;\n      }\n      .wxo-chat-input-area:focus-within {\n        border-top-color: #0f62fe;\n      }\n      .wxo-input-wrap {\n        position: relative;\n      }\n      .wxo-chat-input {\n        display: block;\n        width: 100%;\n        margin: 0;\n        padding: 12px 52px 12px 16px;\n        border: none !important;\n        border-radius: 0 0 12px 12px;\n        font-size: 14px;\n        outline: none !important;\n        box-shadow: none !important;\n        font-family: inherit;\n        box-sizing: border-box;\n        resize: none;\n        overflow-y: hidden;\n        min-height: 52px;\n        max-height: 160px;\n        line-height: 1.5;\n      }\n      .wxo-chat-window .wxo-chat-input:focus {\n        outline: none !important;\n        border: none !important;\n        box-shadow: inset 0 0 0 2px #0f62fe !important;\n      }\n      .wxo-chat-input:disabled { background: #f4f4f4; }\n      .wxo-chat-send {\n        position: absolute;\n        right: 14px;\n        bottom: 13px;\n        width: 26px;\n        height: 26px;\n        background: #c6c6c6;\n        color: #ffffff;\n        border: none;\n        border-radius: 50%;\n        display: flex;\n        align-items: center;\n        justify-content: center;\n        cursor: default;\n        transition: background 0.15s;\n        flex-shrink: 0;\n      }\n      .wxo-chat-send:not(:disabled) {\n        background: #161616;\n        cursor: pointer;\n      }\n      .wxo-chat-send:not(:disabled):hover { background: #393939; }\n\n      /* Scroll-to-bottom button */\n      .wxo-scroll-bottom {\n        position: absolute;\n        bottom: 66px;\n        left: 50%;\n        transform: translateX(-50%);\n        width: 32px;\n        height: 32px;\n        border-radius: 50%;\n        background: #161616;\n        border: none;\n        box-shadow: 0 2px 8px rgba(0,0,0,0.25);\n        cursor: pointer;\n        display: flex;\n        align-items: center;\n        justify-content: center;\n        color: #ffffff;\n        transition: box-shadow 0.15s, background 0.15s;\n        z-index: 10;\n      }\n      .wxo-scroll-bottom:hover {\n        background: #393939;\n        box-shadow: 0 3px 10px rgba(0,0,0,0.3);\n      }\n\n      /* Welcome screen */\n      .wxo-welcome {\n        display: flex;\n        flex-direction: column;\n        align-items: flex-start;\n        padding: 24px 20px 16px;\n        gap: 0;\n        flex: 1;\n        overflow-y: auto;\n      }\n      .wxo-welcome__greeting {\n        font-size: 28px;\n        font-weight: 400;\n        color: #161616;\n        margin-bottom: 8px;\n        line-height: 1.25;\n      }\n      .wxo-welcome__description {\n        font-size: 13px;\n        color: #525252;\n        line-height: 1.6;\n        margin-bottom: 24px;\n      }\n      .wxo-welcome__prompts-label {\n        font-size: 11px;\n        font-weight: 600;\n        color: #525252;\n        text-transform: uppercase;\n        letter-spacing: 0.08em;\n        margin-bottom: 10px;\n      }\n      .wxo-welcome__prompts {\n        display: flex;\n        flex-direction: column;\n        gap: 8px;\n        width: 100%;\n      }\n      .wxo-welcome__prompt {\n        background: white;\n        border: 1px solid #e0e0e0;\n        border-radius: 8px;\n        padding: 14px 16px;\n        font-size: 13px;\n        font-family: inherit;\n        color: #161616;\n        cursor: pointer;\n        text-align: left;\n        line-height: 1.5;\n        transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;\n        display: flex;\n        flex-direction: column;\n        align-items: flex-start;\n        min-height: 96px;\n        overflow: hidden;\n      }\n      .wxo-welcome__prompt:hover {\n        background: #f4f4f4;\n        border-color: #8d8d8d;\n        box-shadow: 0 2px 6px rgba(0,0,0,0.08);\n      }\n      .wxo-welcome__prompt-text {\n        display: -webkit-box;\n        -webkit-line-clamp: 3;\n        -webkit-box-orient: vertical;\n        overflow: hidden;\n        width: 100%;\n        margin-bottom: auto;\n      }\n      .wxo-welcome__prompt-arrow {\n        color: ").concat(primaryColor, ";\n        font-size: 14px;\n        line-height: 1;\n        align-self: flex-end;\n        margin-top: 8px;\n      }\n\n      /* Message action row (copy button) */\n      .wxo-message__actions {\n        display: flex;\n        gap: 4px;\n        margin-top: 4px;\n        padding: 0 4px;\n        opacity: 0;\n        transition: opacity 0.15s;\n      }\n      .wxo-message--agent .wxo-message__actions { opacity: 1; }\n      .wxo-message--user .wxo-message__actions { justify-content: flex-end; }\n      .wxo-message--user:hover .wxo-message__actions { opacity: 1; }\n      .wxo-copy-btn {\n        background: none;\n        border: none;\n        border-radius: 4px;\n        padding: 3px 6px;\n        height: 24px;\n        cursor: pointer;\n        color: #525252;\n        display: flex;\n        align-items: center;\n        transition: background 0.15s, color 0.15s;\n      }\n      .wxo-copy-btn:hover {\n        background: #f4f4f4;\n        color: #161616;\n      }\n\n      /* Custom tooltip (data-tooltip) */\n      [data-tooltip] { position: relative; }\n      [data-tooltip]::after {\n        content: attr(data-tooltip);\n        position: absolute;\n        bottom: calc(100% + 8px);\n        left: 50%;\n        transform: translateX(-50%);\n        background: #161616;\n        color: #ffffff;\n        font-size: 11px;\n        line-height: 1;\n        padding: 4px 8px;\n        border-radius: 4px;\n        white-space: nowrap;\n        pointer-events: none;\n        opacity: 0;\n        transition: opacity 0.1s;\n        z-index: 100;\n      }\n      [data-tooltip]::before {\n        content: '';\n        position: absolute;\n        bottom: calc(100% + 4px);\n        left: 50%;\n        transform: translateX(-50%);\n        border: 4px solid transparent;\n        border-top-color: #161616;\n        pointer-events: none;\n        opacity: 0;\n        transition: opacity 0.1s;\n        z-index: 100;\n      }\n      [data-tooltip]:hover::after,\n      [data-tooltip]:hover::before {\n        opacity: 1;\n        transition-delay: 0.1s;\n      }\n      /* These must stay absolutely positioned (overrides [data-tooltip]{position:relative}) */\n      .wxo-input-wrap .wxo-chat-send { position: absolute; }\n      .wxo-chat-window .wxo-scroll-bottom { position: absolute; }\n\n      /* Tooltip below variant (for header buttons at top of window) */\n      .tooltip-below[data-tooltip]::after {\n        bottom: auto;\n        top: calc(100% + 8px);\n      }\n      .tooltip-below[data-tooltip]::before {\n        bottom: auto;\n        top: calc(100% + 4px);\n        border-top-color: transparent;\n        border-bottom-color: #161616;\n      }\n    ");
     document.head.appendChild(style);
   }
   destroy() {

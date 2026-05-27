@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>wxo-sdk AWS Test</title>
+</head>
+<body>
+  <h2>wxo-sdk AWS Test Page</h2>
+  <p>右下のボタンからチャットを開いてください。</p>
+
+  <script>
+    window.wxOConfiguration = {
+      orchestrationID: "20260406-0629-1918-302e-af2f73dfb5c1_20260526-0600-4463-4045-23eb24e20465",
+      hostURL: "https://ap-southeast-1.dl.watson-orchestrate.ibm.com",
+      defaultLocale: 'ja',
+      agents: [
+        {
+          id: 'houmu04',
+          name: '法務AIエージェント（V3-仕入先向け契約用）',
+          agentId: 'e6d5714e-92a8-44bf-a752-51fc69314843',
+          agentEnvironmentId: '66d7ce9f-57bf-4a84-a798-8f2e9f51c522'
+        },
+        {
+          id: 'houmu05',
+          name: '法務AIエージェント（V3-仕入先向け契約用）',
+          agentId: 'e6d5714e-92a8-44bf-a752-51fc69314843',
+          agentEnvironmentId: '66d7ce9f-57bf-4a84-a798-8f2e9f51c522'
+        }
+      ],
+      features: {
+        feedback: true,
+        multiAgent: true
+      },
+      feedbackOptions: {
+        positive: {
+          showDetails: false,
+          categories: ['役立った', '正確', 'わかりやすい', 'その他'],
+          disclaimer: ''
+        },
+        negative: {
+          showDetails: true,
+          categories: ['正しくない', '未完了', '長すぎます', '関係ない', 'その他'],
+          disclaimer: 'フィードバックに機密情報や個人を特定できる情報を含めないようにしてください'
+        }
+      },
+      debug: true
+    };
+  </script>
+
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify/dist/purify.min.js"></script>
+  <script src="../../dist/wxo-sdk.min.js"></script>
+  <script>
+    wxoLoader.init().catch(function(e) { console.error('[wxo]', e); });
+  </script>
+</body>
+</html>

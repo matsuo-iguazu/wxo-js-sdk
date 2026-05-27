@@ -466,6 +466,13 @@ class UIManager {
       .wxo-message--agent .wxo-message__content ol {
         margin: 4px 0; padding-left: 20px;
       }
+      .wxo-message--agent .wxo-message__content blockquote {
+        margin: 4px 0; padding: 4px 12px;
+        border-left: 3px solid #8d8d8d;
+        color: #525252;
+        background: #f4f4f4;
+        border-radius: 0 4px 4px 0;
+      }
 
       /* Feedback - thumbs (inline in action row, no border) */
       .wxo-feedback { margin-top: 4px; }

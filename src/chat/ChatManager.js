@@ -10,9 +10,10 @@
  *   x-ibm-wo-orchestrate-id, x-ibm-wo-user-id, x-ibm-wo-crn
  */
 class ChatManager {
-  constructor(config, httpClient) {
+  constructor(config, httpClient, socketClient = null) {
     this.config = config;
     this.httpClient = httpClient;
+    this.socketClient = socketClient;
     this.sessions = new Map(); // agentId -> session data
     this.currentAgentId = null;
     this.messageHandlers = [];
@@ -94,9 +95,13 @@ class ChatManager {
     // Note: user messages are returned to the caller for display.
     // onMessage handlers are reserved for agent responses only.
 
-    // Send to orchestrate/runs with streaming
+    // Send to orchestrate/runs — WebSocket mode for AWS, HTTP streaming for IBM Cloud
     try {
-      await this._sendToRuns(session, text);
+      if (this.socketClient) {
+        await this._sendToRunsViaWebSocket(session, text);
+      } else {
+        await this._sendToRuns(session, text);
+      }
     } catch (error) {
       console.error('[wxo-sdk] Failed to send message:', error);
       this._handleError(error);
@@ -155,6 +160,101 @@ class ChatManager {
 
     const response = await this.httpClient.stream(path, body);
     await this._handleStreamResponse(response, session);
+  }
+
+  /**
+   * Send message via /runs and receive response events via WebSocket (AWS mode).
+   * POST /runs triggers the agent run; actual events arrive on the Socket.IO connection.
+   * @private
+   */
+  async _sendToRunsViaWebSocket(session, text) {
+    const path = '/mfe_home_archer/api/v1/orchestrate/runs?stream=true&stream_timeout=180000&multiple_content=true';
+    const body = {
+      message: {
+        role: 'user',
+        content: text,
+        additional_properties: {}
+      },
+      context: {},
+      agent_id: session.agent.agentId,
+      thread_id: session.threadId,
+      environment_id: session.agent.agentEnvironmentId || ''
+    };
+
+    if (this.config.isDebug()) {
+      console.log('[wxo-sdk] Sending to runs (WebSocket mode):', body);
+    }
+
+    const messageId = this._generateMessageId();
+    let isFirstDelta = true;
+    let agentText = '';
+
+    let wsResolve, wsReject;
+    const wsPromise = new Promise((resolve, reject) => {
+      wsResolve = resolve;
+      wsReject = reject;
+    });
+
+    const handler = (workerMsg) => {
+      // Filter by thread_id (present in data.thread_id for event messages)
+      const threadId = workerMsg.data?.thread_id || workerMsg.thread_id;
+      if (threadId && threadId !== session.threadId) return;
+
+      // Skip non-event messages (e.g. initial WORKER_MESSAGE with tenant_id/run)
+      if (!workerMsg.event) return;
+
+      const chunk = this._extractTextFromEvent(workerMsg);
+      if (chunk) {
+        agentText += chunk;
+        this._triggerDeltaHandlers({ messageId, text: chunk, isFirst: isFirstDelta, isDone: false });
+        isFirstDelta = false;
+      }
+
+      if (workerMsg.event === 'done') {
+        this.socketClient.removeWorkerMessageHandler(handler);
+        this._triggerDeltaHandlers({ messageId, text: '', isFirst: false, isDone: true, fullText: agentText });
+
+        if (agentText) {
+          const agentMessage = {
+            id: messageId,
+            text: agentText,
+            sender: 'agent',
+            timestamp: Date.now()
+          };
+          session.messages.push(agentMessage);
+          this._triggerMessageHandlers(agentMessage);
+        }
+
+        if (this.config.isDebug()) {
+          console.log('[wxo-sdk] WebSocket stream complete. Agent response:', agentText);
+        }
+
+        wsResolve();
+      }
+    };
+
+    this.socketClient.onWorkerMessage(handler);
+
+    try {
+      // POST /runs to trigger the agent run
+      const response = await this.httpClient.stream(path, body);
+      // Drain the HTTP response in background — actual events arrive via WebSocket
+      const reader = response.body.getReader();
+      (async () => {
+        try {
+          while (true) {
+            const { done } = await reader.read();
+            if (done) break;
+          }
+        } catch (_) {}
+        finally { reader.releaseLock(); }
+      })();
+    } catch (error) {
+      this.socketClient.removeWorkerMessageHandler(handler);
+      throw error;
+    }
+
+    await wsPromise;
   }
 
   /**
@@ -457,6 +557,7 @@ class ChatManager {
     this.deltaHandlers = [];
     this.errorHandlers = [];
     this.currentAgentId = null;
+    this.socketClient = null;
   }
 }
 
