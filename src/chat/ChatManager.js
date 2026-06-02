@@ -132,11 +132,11 @@ class ChatManager {
 
   /**
    * Send message via orchestrate/runs (streaming)
-   * POST /mfe_home_archer/api/v1/orchestrate/runs?stream=true&stream_timeout=180000&multiple_content=true
+   * POST /mfe_home_archer/api/v1/orchestrate/runs?stream=true&stream_timeout=180000
    * @private
    */
   async _sendToRuns(session, text) {
-    const path = '/mfe_home_archer/api/v1/orchestrate/runs?stream=true&stream_timeout=180000&multiple_content=true';
+    const path = '/mfe_home_archer/api/v1/orchestrate/runs?stream=true&stream_timeout=180000';
     const body = {
       message: {
         role: 'user',
@@ -206,39 +206,65 @@ class ChatManager {
    * Called when HTTP stream detects a flow-started notification.
    * @private
    */
-  async _consumeFromWebSocketBuffer(wsBuffer, session, messageId, isFirstDelta) {
-    let agentText = '';
-    let _isFirstDelta = isFirstDelta;
+  async _consumeFromWebSocketBuffer(wsBuffer, session, messageId) {
+    let agentText = ''; // accumulated silently as fallback if REST fails
 
     return new Promise((resolve) => {
       wsBuffer.consume((workerMsg) => {
         const chunk = this._extractTextFromEvent(workerMsg);
         if (chunk) {
-          agentText += chunk;
-          this._triggerDeltaHandlers({ messageId, text: chunk, isFirst: _isFirstDelta, isDone: false });
-          _isFirstDelta = false;
+          agentText += chunk; // no UI emission — display after REST fetch
         }
 
         if (workerMsg.event === 'done') {
           wsBuffer.cleanup();
-          this._triggerDeltaHandlers({ messageId, text: '', isFirst: false, isDone: true, fullText: agentText });
 
-          if (agentText) {
-            const agentMessage = {
-              id: messageId,
-              text: agentText,
-              sender: 'agent',
-              timestamp: Date.now()
-            };
-            session.messages.push(agentMessage);
-            this._triggerMessageHandlers(agentMessage);
-          }
+          // WebSocket delivery has a server-side character corruption bug.
+          // Fetch the authoritative stored text via REST, then display all at once.
+          (async () => {
+            let finalText = agentText;
+            try {
+              const messages = await this.httpClient.get(
+                `/mfe_home_archer/api/v1/threads/${session.threadId}/messages`
+              );
+              const agentMessages = (messages || []).filter(m =>
+                m.role === 'assistant' &&
+                m.content?.some(c => c.response_type === 'text' && !c.text?.toLowerCase().includes('new flow has started'))
+              );
+              const lastMsg = agentMessages.at(-1);
+              if (lastMsg?.content) {
+                finalText = lastMsg.content
+                  .filter(c => c.response_type === 'text' && !c.text?.toLowerCase().includes('new flow has started'))
+                  .map(c => c.text || '')
+                  .join('');
+              }
+            } catch (e) {
+              if (this.config.isDebug()) {
+                console.warn('[wxo-sdk] REST message fetch failed, using WS text:', e.message);
+              }
+            }
 
-          if (this.config.isDebug()) {
-            console.log('[wxo-sdk] WebSocket stream complete. Agent response:', agentText);
-          }
+            // Display full text at once: create bubble then immediately finalize
+            this._triggerDeltaHandlers({ messageId, text: '', isFirst: true, isDone: false });
+            this._triggerDeltaHandlers({ messageId, text: '', isFirst: false, isDone: true, fullText: finalText });
 
-          resolve();
+            if (finalText) {
+              const agentMessage = {
+                id: messageId,
+                text: finalText,
+                sender: 'agent',
+                timestamp: Date.now()
+              };
+              session.messages.push(agentMessage);
+              this._triggerMessageHandlers(agentMessage);
+            }
+
+            if (this.config.isDebug()) {
+              console.log('[wxo-sdk] Flow agent response:', finalText);
+            }
+
+            resolve();
+          })();
         }
       });
     });
@@ -308,7 +334,7 @@ class ChatManager {
       if (this.config.isDebug()) {
         console.log('[wxo-sdk] Flow detected in HTTP stream, switching to WebSocket events');
       }
-      await this._consumeFromWebSocketBuffer(wsBuffer, session, messageId, isFirstDelta);
+      await this._consumeFromWebSocketBuffer(wsBuffer, session, messageId);
       return;
     }
 

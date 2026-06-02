@@ -701,13 +701,13 @@ class ChatManager {
 
   /**
    * Send message via orchestrate/runs (streaming)
-   * POST /mfe_home_archer/api/v1/orchestrate/runs?stream=true&stream_timeout=180000&multiple_content=true
+   * POST /mfe_home_archer/api/v1/orchestrate/runs?stream=true&stream_timeout=180000
    * @private
    */
   _sendToRuns(session, text) {
     var _this5 = this;
     return _asyncToGenerator(function* () {
-      var path = '/mfe_home_archer/api/v1/orchestrate/runs?stream=true&stream_timeout=180000&multiple_content=true';
+      var path = '/mfe_home_archer/api/v1/orchestrate/runs?stream=true&stream_timeout=180000';
       var body = {
         message: {
           role: 'user',
@@ -772,47 +772,75 @@ class ChatManager {
    * Called when HTTP stream detects a flow-started notification.
    * @private
    */
-  _consumeFromWebSocketBuffer(wsBuffer, session, messageId, isFirstDelta) {
+  _consumeFromWebSocketBuffer(wsBuffer, session, messageId) {
     var _this6 = this;
     return _asyncToGenerator(function* () {
-      var agentText = '';
-      var _isFirstDelta = isFirstDelta;
+      var agentText = ''; // accumulated silently as fallback if REST fails
+
       return new Promise(resolve => {
         wsBuffer.consume(workerMsg => {
           var chunk = _this6._extractTextFromEvent(workerMsg);
           if (chunk) {
-            agentText += chunk;
-            _this6._triggerDeltaHandlers({
-              messageId,
-              text: chunk,
-              isFirst: _isFirstDelta,
-              isDone: false
-            });
-            _isFirstDelta = false;
+            agentText += chunk; // no UI emission — display after REST fetch
           }
           if (workerMsg.event === 'done') {
             wsBuffer.cleanup();
-            _this6._triggerDeltaHandlers({
-              messageId,
-              text: '',
-              isFirst: false,
-              isDone: true,
-              fullText: agentText
-            });
-            if (agentText) {
-              var agentMessage = {
-                id: messageId,
-                text: agentText,
-                sender: 'agent',
-                timestamp: Date.now()
-              };
-              session.messages.push(agentMessage);
-              _this6._triggerMessageHandlers(agentMessage);
-            }
-            if (_this6.config.isDebug()) {
-              console.log('[wxo-sdk] WebSocket stream complete. Agent response:', agentText);
-            }
-            resolve();
+
+            // WebSocket delivery has a server-side character corruption bug.
+            // Fetch the authoritative stored text via REST, then display all at once.
+            _asyncToGenerator(function* () {
+              var finalText = agentText;
+              try {
+                var messages = yield _this6.httpClient.get("/mfe_home_archer/api/v1/threads/".concat(session.threadId, "/messages"));
+                var agentMessages = (messages || []).filter(m => {
+                  var _m$content;
+                  return m.role === 'assistant' && ((_m$content = m.content) === null || _m$content === void 0 ? void 0 : _m$content.some(c => {
+                    var _c$text;
+                    return c.response_type === 'text' && !((_c$text = c.text) !== null && _c$text !== void 0 && _c$text.toLowerCase().includes('new flow has started'));
+                  }));
+                });
+                var lastMsg = agentMessages.at(-1);
+                if (lastMsg !== null && lastMsg !== void 0 && lastMsg.content) {
+                  finalText = lastMsg.content.filter(c => {
+                    var _c$text2;
+                    return c.response_type === 'text' && !((_c$text2 = c.text) !== null && _c$text2 !== void 0 && _c$text2.toLowerCase().includes('new flow has started'));
+                  }).map(c => c.text || '').join('');
+                }
+              } catch (e) {
+                if (_this6.config.isDebug()) {
+                  console.warn('[wxo-sdk] REST message fetch failed, using WS text:', e.message);
+                }
+              }
+
+              // Display full text at once: create bubble then immediately finalize
+              _this6._triggerDeltaHandlers({
+                messageId,
+                text: '',
+                isFirst: true,
+                isDone: false
+              });
+              _this6._triggerDeltaHandlers({
+                messageId,
+                text: '',
+                isFirst: false,
+                isDone: true,
+                fullText: finalText
+              });
+              if (finalText) {
+                var agentMessage = {
+                  id: messageId,
+                  text: finalText,
+                  sender: 'agent',
+                  timestamp: Date.now()
+                };
+                session.messages.push(agentMessage);
+                _this6._triggerMessageHandlers(agentMessage);
+              }
+              if (_this6.config.isDebug()) {
+                console.log('[wxo-sdk] Flow agent response:', finalText);
+              }
+              resolve();
+            })();
           }
         });
       });
@@ -900,7 +928,7 @@ class ChatManager {
         if (_this7.config.isDebug()) {
           console.log('[wxo-sdk] Flow detected in HTTP stream, switching to WebSocket events');
         }
-        yield _this7._consumeFromWebSocketBuffer(wsBuffer, session, messageId, isFirstDelta);
+        yield _this7._consumeFromWebSocketBuffer(wsBuffer, session, messageId);
         return;
       }
 
@@ -982,8 +1010,8 @@ class ChatManager {
         if (Array.isArray(content)) {
           // No type filter — extract text from any content item to handle varying API formats
           return content.map(c => {
-            var _c$text$value, _c$text;
-            return typeof c.text === 'string' ? c.text : (_c$text$value = (_c$text = c.text) === null || _c$text === void 0 ? void 0 : _c$text.value) !== null && _c$text$value !== void 0 ? _c$text$value : '';
+            var _c$text$value, _c$text3;
+            return typeof c.text === 'string' ? c.text : (_c$text$value = (_c$text3 = c.text) === null || _c$text3 === void 0 ? void 0 : _c$text3.value) !== null && _c$text$value !== void 0 ? _c$text$value : '';
           }).filter(t => t.length > 0).join('');
         }
         if (typeof content === 'string') return content;
