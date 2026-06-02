@@ -14,8 +14,8 @@ class Config {
       rootElementID: 'root',
       agents: [],
       theme: {
-        primaryColor: '#0f62fe',
-        fontFamily: 'IBM Plex Sans, sans-serif',
+        primaryColor: '#0077C8',
+        fontFamily: "'Noto Sans JP', 'Hiragino Kaku Gothic ProN', 'Yu Gothic', -apple-system, sans-serif",
         borderRadius: '8px'
       },
       ui: {

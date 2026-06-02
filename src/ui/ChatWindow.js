@@ -40,6 +40,7 @@ class ChatWindow {
           </div>
         </div>
         <div class="wxo-chat-header__actions">
+          <button class="wxo-btn-icon wxo-btn-download tooltip-below" aria-label="Download" data-tooltip="テキストダウンロード"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg></button>
           <button class="wxo-btn-icon wxo-btn-resize tooltip-below" aria-label="Resize" data-tooltip="サイズ拡大する"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polyline points="15 3 21 3 21 9"></polyline><polyline points="9 21 3 21 3 15"></polyline><line x1="21" y1="3" x2="14" y2="10"></line><line x1="3" y1="21" x2="10" y2="14"></line></svg></button>
           <button class="wxo-btn-icon wxo-btn-minimize tooltip-below" aria-label="Minimize" data-tooltip="最小化">−</button>
         </div>
@@ -80,6 +81,7 @@ class ChatWindow {
     this.el.querySelector('.wxo-btn-minimize').addEventListener('click', () => this.onMinimize());
     this.el.querySelector('.wxo-btn-reload').addEventListener('click', () => this.onReload());
     this.el.querySelector('.wxo-btn-resize').addEventListener('click', () => this._toggleResize());
+    this.el.querySelector('.wxo-btn-download').addEventListener('click', () => this._downloadChat());
 
     // Scroll-to-bottom button
     this.messagesEl.addEventListener('scroll', () => this._updateScrollBtn());
@@ -531,6 +533,29 @@ class ChatWindow {
     }
   }
 
+  _downloadChat() {
+    if (this.messages.length === 0) return;
+    const lines = this.messages.map(msg => {
+      const sender = msg.sender === 'user' ? 'あなた' : this.agent.name;
+      const dt = new Date(msg.timestamp || Date.now());
+      const y = dt.getFullYear();
+      const mo = String(dt.getMonth() + 1).padStart(2, '0');
+      const d = String(dt.getDate()).padStart(2, '0');
+      const h = String(dt.getHours()).padStart(2, '0');
+      const mi = String(dt.getMinutes()).padStart(2, '0');
+      return `[${sender}] ${y}-${mo}-${d} ${h}:${mi}\n${this._stripMarkdown(msg.text || '')}`;
+    });
+    const today = new Date();
+    const filename = `chat-${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}.txt`;
+    const blob = new Blob([lines.join('\n\n')], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   _scrollToBottom() {
     if (this.messagesEl) {
       this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
@@ -550,6 +575,26 @@ class ChatWindow {
     if (!this.scrollBtnEl || !this.messagesEl) return;
     const atBottom = this.messagesEl.scrollHeight - this.messagesEl.scrollTop - this.messagesEl.clientHeight < 50;
     this.scrollBtnEl.style.display = atBottom ? 'none' : 'flex';
+  }
+
+  _stripMarkdown(text) {
+    return text
+      .replace(/```[\w]*\n?([\s\S]*?)```/g, '$1')  // code blocks: keep content
+      .replace(/`(.+?)`/g, '$1')                    // inline code
+      .replace(/^[-*_]{3,}\s*$/gm, '')              // horizontal rules (before italic _ to avoid mis-parse)
+      .replace(/^#{1,6}\s+/gm, '')                  // headings
+      .replace(/\*\*(.+?)\*\*/gs, '$1')             // bold **
+      .replace(/__(.+?)__/gs, '$1')                 // bold __
+      .replace(/\*(.+?)\*/gs, '$1')                 // italic *
+      .replace(/_(.+?)_/gs, '$1')                   // italic _
+      .replace(/!\[.*?\]\(.+?\)/g, '')              // images
+      .replace(/\[(.+?)\]\(.+?\)/g, '$1')           // links → label only
+      .replace(/^>\s?/gm, '')                       // blockquotes
+      .replace(/^[-*+]\s+/gm, '')                   // unordered list bullets
+      .replace(/^\d+\.\s+/gm, '')                   // ordered list numbers
+      .replace(/(\S)_(\s|$)/gm, '$1$2')            // orphaned closing _
+      .replace(/(^|\s)_(\S)/gm, '$1$2')            // orphaned opening _
+      .trim();
   }
 
   _parseMarkdown(text) {

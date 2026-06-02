@@ -240,7 +240,7 @@ class UIManager {
         box-shadow: 0 6px 16px rgba(0,0,0,0.3);
       }
       .wxo-floating-btn--active {
-        background: #0043ce;
+        background: #005A96;
       }
 
       /* Agent selector rise animation */
@@ -268,7 +268,7 @@ class UIManager {
         display: flex;
         align-items: center;
         justify-content: flex-end;
-        background: #ebf0fa;
+        background: #E8F4FC;
         border-radius: 24px;
         padding: 10px 18px;
         cursor: pointer;
@@ -352,12 +352,12 @@ class UIManager {
         color: #161616;
       }
 
-      /* Messages area - gradient: white top → #ebf0fa bottom */
+      /* Messages area - gradient: white top → #E8F4FC bottom */
       .wxo-chat-messages {
         flex: 1;
         overflow-y: auto;
         padding: 16px 16px 24px;
-        background: linear-gradient(to bottom, #ffffff 0%, #ffffff 50%, #ebf0fa 100%);
+        background: linear-gradient(to bottom, #ffffff 0%, #ffffff 50%, #E8F4FC 100%);
         display: flex;
         flex-direction: column;
         gap: 12px;
@@ -536,7 +536,7 @@ class UIManager {
       }
       .wxo-feedback__pill:hover { background: #f4f4f4; }
       .wxo-feedback__pill--selected {
-        background: #edf4ff;
+        background: #E8F4FC;
         border-color: ${primaryColor};
         color: ${primaryColor};
       }
@@ -599,7 +599,7 @@ class UIManager {
         box-sizing: border-box !important;
         line-height: 40px;
       }
-      .wxo-feedback__submit:hover { background: #0043ce; }
+      .wxo-feedback__submit:hover { background: #005A96; }
       .wxo-feedback__thanks {
         font-size: 12px;
         color: #525252;
