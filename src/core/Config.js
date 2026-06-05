@@ -36,6 +36,8 @@ class Config {
       defaultLocale: null,       // Locale for welcome message / starter prompts (e.g. 'ja', 'en'). Falls back to browser language.
       feedbackWebhookUrl: null,  // POST destination for feedback data (optional)
       feedbackUserInfo: null,    // User info object to spread into feedback payload (optional)
+      escalationWebhookUrl: null,         // Teams Incoming Webhook URL for legal team notifications (optional)
+      escalationTriggerPhrases: [],       // Phrases in agent response that show the "notify" button (e.g. ['法務担当に質問してください'])
       feedbackOptions: {
         positive: {
           showDetails: true,
@@ -220,6 +222,14 @@ class Config {
    */
   getFeedbackOptions() {
     return this.config?.feedbackOptions || null;
+  }
+
+  getEscalationWebhookUrl() {
+    return this.config?.escalationWebhookUrl || null;
+  }
+
+  getEscalationTriggerPhrases() {
+    return this.config?.escalationTriggerPhrases || [];
   }
 
   /**

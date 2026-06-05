@@ -3,7 +3,7 @@
  * Renders the full chat interface: header, messages, input, feedback buttons
  */
 class ChatWindow {
-  constructor({ agent, messages = [], starterSettings = null, onSend, onFeedback, onMinimize, onReload, feedbackEnabled = true, feedbackOptions = null }) {
+  constructor({ agent, messages = [], starterSettings = null, onSend, onFeedback, onMinimize, onReload, feedbackEnabled = true, feedbackOptions = null, escalationWebhookUrl = null, escalationTriggerPhrases = [], userInfo = null }) {
     this.agent = agent;
     this.starterSettings = starterSettings;
     this.messages = [...messages];
@@ -13,6 +13,9 @@ class ChatWindow {
     this.onReload = onReload;
     this.feedbackEnabled = feedbackEnabled;
     this.feedbackOptions = feedbackOptions;
+    this.escalationWebhookUrl = escalationWebhookUrl;
+    this.escalationTriggerPhrases = escalationTriggerPhrases;
+    this.userInfo = userInfo;
     this.el = null;
     this.messagesEl = null;
     this.inputEl = null;
@@ -218,11 +221,60 @@ class ChatWindow {
     }
 
     actionRow.appendChild(this._createCopyButton(fullText || ''));
+
+    // Escalation button: shown when agent response contains a trigger phrase
+    if (this.escalationWebhookUrl && this.escalationTriggerPhrases.length > 0) {
+      const triggered = this.escalationTriggerPhrases.some(p => (fullText || '').includes(p));
+      if (triggered) {
+        const escalateBtn = document.createElement('button');
+        escalateBtn.className = 'wxo-escalation-btn';
+        escalateBtn.textContent = '法務に通知';
+        escalateBtn.addEventListener('click', () => this._sendEscalationNotification(fullText || '', escalateBtn));
+        actionRow.appendChild(escalateBtn);
+      }
+    }
+
     this.streamingEl.appendChild(actionRow);
     if (fbPanelEl) this.streamingEl.appendChild(fbPanelEl);
 
     this.streamingEl = null;
     this._scrollToBottom();
+  }
+
+  _sendEscalationNotification(answer, btn) {
+    btn.disabled = true;
+    btn.textContent = '送信中...';
+
+    const question = [...this.messages].reverse().find(m => m.sender === 'user')?.text || '';
+    const userName = this.userInfo?.displayName || this.userInfo?.name || this.userInfo?.loginName || '不明';
+
+    const payload = {
+      '@type': 'MessageCard',
+      '@context': 'https://schema.org/extensions',
+      summary: '法務エスカレーション',
+      themeColor: '0077C8',
+      title: '📋 法務エスカレーション',
+      sections: [{
+        facts: [
+          { name: '質問者', value: userName },
+          { name: 'エージェント', value: this.agent.name },
+          { name: '質問', value: question },
+        ],
+        text: `**AIの回答:** ${answer.replace(/\n/g, '<br>')}`
+      }]
+    };
+
+    fetch(this.escalationWebhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    }).then(() => {
+      btn.textContent = '✓ 通知済み';
+      btn.classList.add('wxo-escalation-btn--sent');
+    }).catch(() => {
+      btn.disabled = false;
+      btn.textContent = '法務に通知';
+    });
   }
 
   _handleSend() {
