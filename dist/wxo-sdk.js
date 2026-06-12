@@ -2326,7 +2326,7 @@
       const chatWindow = new ChatWindow({
         agent,
         starterSettings: null,
-        messages: this.client.getMessages(),
+        messages: [],
         feedbackEnabled,
         feedbackOptions,
         onSend: async text => {

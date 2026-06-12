@@ -2485,7 +2485,7 @@ class UIManager {
       var chatWindow = new ChatWindow({
         agent,
         starterSettings: null,
-        messages: _this2.client.getMessages(),
+        messages: [],
         feedbackEnabled,
         feedbackOptions,
         onSend: function () {
