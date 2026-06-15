@@ -3387,21 +3387,25 @@
 
       /* Clause assist panel (absolute overlay inside .wxo-chat-window) */
       .wxo-assist-panel {
-        flex: 0 1 320px;
-        min-height: 0;
+        position: absolute;
+        top: 48px;
+        bottom: 53px;
+        left: 0;
+        right: 0;
         background: #e8f4ff;
         border-top: 1px solid ${primaryColor};
         box-shadow: 0 -2px 8px rgba(0,0,0,0.1);
         display: flex;
         flex-direction: column;
         overflow: hidden;
-        max-height: 0;
+        transform: translateY(100%);
         opacity: 0;
         pointer-events: none;
-        transition: max-height 0.25s ease-out, opacity 0.25s ease-out;
+        transition: transform 0.25s ease-out, opacity 0.25s ease-out;
+        z-index: 20;
       }
       .wxo-assist-panel--visible {
-        max-height: 320px;
+        transform: translateY(0);
         opacity: 1;
         pointer-events: all;
       }
@@ -3430,8 +3434,7 @@
       }
       .wxo-assist-close:hover { background: #d0e8f8; color: #161616; }
       .wxo-assist-body {
-        flex: 1;
-        height: 0;
+        flex: 1 1 0;
         overflow-y: auto;
         padding: 12px 16px;
         display: flex;
