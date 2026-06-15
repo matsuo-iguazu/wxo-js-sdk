@@ -3395,8 +3395,10 @@
         background: #e8f4ff;
         border-top: 1px solid ${primaryColor};
         box-shadow: 0 -2px 8px rgba(0,0,0,0.1);
-        display: flex;
-        flex-direction: column;
+        display: grid;
+        grid-template-rows: auto 1fr auto;
+        grid-template-columns: 100%;
+        min-height: 0;
         overflow: hidden;
         transform: translateY(100%);
         opacity: 0;
@@ -3434,7 +3436,7 @@
       }
       .wxo-assist-close:hover { background: #d0e8f8; color: #161616; }
       .wxo-assist-body {
-        flex: 1 1 0;
+        min-height: 0;
         overflow-y: auto;
         padding: 12px 16px;
         display: flex;
@@ -3529,7 +3531,6 @@
         box-shadow: 0 0 0 1px ${primaryColor};
       }
       .wxo-assist-generated {
-        flex: 1;
         background: #f4f4f4;
         border: 1px solid #e0e0e0;
         border-radius: 4px;
