@@ -1,9 +1,11 @@
+import ContractAssistPanel from './ContractAssistPanel.js';
+
 /**
  * Chat window UI component
  * Renders the full chat interface: header, messages, input, feedback buttons
  */
 class ChatWindow {
-  constructor({ agent, messages = [], starterSettings = null, onSend, onFeedback, onMinimize, onReload, feedbackEnabled = true, feedbackOptions = null }) {
+  constructor({ agent, messages = [], starterSettings = null, onSend, onFeedback, onMinimize, onReload, feedbackEnabled = true, feedbackOptions = null, clauseAssistData = null, clauseAssistAutoOpen = true }) {
     this.agent = agent;
     this.starterSettings = starterSettings;
     this.messages = [...messages];
@@ -13,6 +15,8 @@ class ChatWindow {
     this.onReload = onReload;
     this.feedbackEnabled = feedbackEnabled;
     this.feedbackOptions = feedbackOptions;
+    this.clauseAssistData = clauseAssistData;
+    this.clauseAssistAutoOpen = clauseAssistAutoOpen;
     this.el = null;
     this.messagesEl = null;
     this.inputEl = null;
@@ -24,11 +28,16 @@ class ChatWindow {
     this.isExpanded = false;
     this.welcomeEl = null;
     this._windowLoadingEl = null;
+    this.assistPanel = null;
   }
 
   render(container) {
     this.el = document.createElement('div');
     this.el.className = 'wxo-chat-window';
+
+    const assistBtnHtml = this.clauseAssistData
+      ? `<button class="wxo-assist-btn" data-tooltip="条項アシスト" aria-label="条項アシスト">📋</button>`
+      : '';
 
     this.el.innerHTML = `
       <div class="wxo-chat-header">
@@ -50,8 +59,9 @@ class ChatWindow {
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><polyline points="6 9 12 15 18 9"></polyline><line x1="4" y1="19" x2="20" y2="19"></line></svg>
       </button>
       <div class="wxo-chat-input-area">
-        <div class="wxo-input-wrap">
+        <div class="wxo-input-wrap${this.clauseAssistData ? ' wxo-input-wrap--with-assist' : ''}">
           <textarea class="wxo-chat-input" rows="1" placeholder="何かを入力してください..."></textarea>
+          ${assistBtnHtml}
           <button class="wxo-chat-send" data-tooltip="送信">
             <svg viewBox="0 0 32 32" fill="currentColor" width="16" height="16" xmlns="http://www.w3.org/2000/svg">
               <path d="M27.45,15.11l-22-11a1,1,0,0,0-1.08.12,1,1,0,0,0-.33,1L7,16,4,26.74A1,1,0,0,0,5,28a1,1,0,0,0,.45-.11l22-11a1,1,0,0,0,0-1.78Zm-20.9,10L8.76,17H18V15H8.76L6.55,6.89,24.76,16Z"/>
@@ -101,6 +111,39 @@ class ChatWindow {
       this._resizeInput();
     });
     this.sendBtn.disabled = true; // initially empty
+
+    // Clause assist panel
+    if (this.clauseAssistData) {
+      this.assistPanel = new ContractAssistPanel({
+        clauseAssistData: this.clauseAssistData,
+        onInsert: (text) => {
+          this.inputEl.value = text;
+          this.sendBtn.disabled = false;
+          this._resizeInput();
+          this.inputEl.focus();
+        },
+      });
+      this.assistPanel.render(this.el);
+
+      const assistBtn = this.el.querySelector('.wxo-assist-btn');
+      assistBtn.addEventListener('click', () => {
+        const active = this.assistPanel.isVisible;
+        this.assistPanel.toggle();
+        assistBtn.classList.toggle('wxo-assist-btn--active', !active);
+      });
+
+      if (this.clauseAssistAutoOpen) {
+        container.appendChild(this.el);
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            this.assistPanel.show();
+            assistBtn.classList.add('wxo-assist-btn--active');
+          });
+        });
+        this._scrollToBottom();
+        return;
+      }
+    }
 
     container.appendChild(this.el);
     this._scrollToBottom();
@@ -642,6 +685,7 @@ class ChatWindow {
       this.inputEl.value = '';
       this._resizeInput();
     }
+    if (this.assistPanel) this.assistPanel.hide();
     this._renderWelcomeScreen();
     this._setInputDisabled(false);
     if (this.sendBtn) this.sendBtn.disabled = true;
@@ -649,6 +693,7 @@ class ChatWindow {
   }
 
   destroy() {
+    if (this.assistPanel) this.assistPanel.destroy();
     if (this.el && this.el.parentNode) {
       this.el.parentNode.removeChild(this.el);
     }
