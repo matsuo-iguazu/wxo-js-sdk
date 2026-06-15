@@ -889,7 +889,6 @@ class UIManager {
         box-shadow: 0 -2px 8px rgba(0,0,0,0.1);
         display: flex;
         flex-direction: column;
-        overflow: hidden;
         transform: translateY(100%);
         opacity: 0;
         pointer-events: none;
