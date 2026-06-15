@@ -3385,10 +3385,10 @@
       /* Clause assist panel (absolute overlay inside .wxo-chat-window) */
       .wxo-assist-panel {
         position: absolute;
+        top: 48px;
         bottom: 53px;
         left: 0;
         right: 0;
-        max-height: calc(100% - 53px - 48px);
         background: #e8f4ff;
         border-top: 1px solid ${primaryColor};
         box-shadow: 0 -2px 8px rgba(0,0,0,0.1);
