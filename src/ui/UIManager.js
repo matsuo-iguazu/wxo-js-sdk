@@ -955,12 +955,15 @@ class UIManager {
       }
       .wxo-assist-select {
         width: 100%;
-        padding: 6px 10px;
+        padding: 6px 28px 6px 10px;
         border: 1px solid #c6c6c6;
         border-radius: 4px;
         font-size: 13px;
         font-family: inherit;
-        background: white;
+        background: white url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23525252' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E") no-repeat right 8px center;
+        -webkit-appearance: none;
+        -moz-appearance: none;
+        appearance: none;
         box-sizing: border-box;
       }
       .wxo-assist-select:focus {
