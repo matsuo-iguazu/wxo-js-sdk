@@ -124,6 +124,9 @@ class ChatWindow {
         },
       });
       this.assistPanel.render(this.el);
+      // Move panel to just before the input area so it sits in the flex flow
+      const inputAreaEl = this.el.querySelector('.wxo-chat-input-area');
+      this.el.insertBefore(this.assistPanel.el, inputAreaEl);
 
       const assistBtn = this.el.querySelector('.wxo-assist-btn');
       assistBtn.addEventListener('click', () => {

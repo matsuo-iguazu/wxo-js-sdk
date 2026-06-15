@@ -1986,6 +1986,9 @@
           }
         });
         this.assistPanel.render(this.el);
+        // Move panel to just before the input area so it sits in the flex flow
+        const inputAreaEl = this.el.querySelector('.wxo-chat-input-area');
+        this.el.insertBefore(this.assistPanel.el, inputAreaEl);
         const assistBtn = this.el.querySelector('.wxo-assist-btn');
         assistBtn.addEventListener('click', () => {
           const active = this.assistPanel.isVisible;
@@ -3384,25 +3387,20 @@
 
       /* Clause assist panel (absolute overlay inside .wxo-chat-window) */
       .wxo-assist-panel {
-        position: absolute;
-        top: 48px;
-        bottom: 53px;
-        left: 0;
-        right: 0;
+        flex-shrink: 0;
         background: #e8f4ff;
         border-top: 1px solid ${primaryColor};
         box-shadow: 0 -2px 8px rgba(0,0,0,0.1);
         display: flex;
         flex-direction: column;
         overflow: hidden;
-        transform: translateY(100%);
+        max-height: 0;
         opacity: 0;
         pointer-events: none;
-        transition: transform 0.25s ease-out, opacity 0.25s ease-out;
-        z-index: 20;
+        transition: max-height 0.25s ease-out, opacity 0.25s ease-out;
       }
       .wxo-assist-panel--visible {
-        transform: translateY(0);
+        max-height: 55%;
         opacity: 1;
         pointer-events: all;
       }
