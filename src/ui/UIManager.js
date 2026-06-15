@@ -889,6 +889,7 @@ class UIManager {
         box-shadow: 0 -2px 8px rgba(0,0,0,0.1);
         display: flex;
         flex-direction: column;
+        overflow: hidden;
         transform: translateY(100%);
         opacity: 0;
         pointer-events: none;
@@ -926,7 +927,7 @@ class UIManager {
       .wxo-assist-close:hover { background: #d0e8f8; color: #161616; }
       .wxo-assist-body {
         flex: 1;
-        min-height: 0;
+        height: 0;
         overflow-y: auto;
         padding: 12px 16px;
         display: flex;
