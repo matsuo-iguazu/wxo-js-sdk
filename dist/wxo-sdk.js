@@ -1998,6 +1998,8 @@
         if (this.clauseAssistAutoOpen) {
           container.appendChild(this.el);
           requestAnimationFrame(() => {
+            const inputArea = this.el.querySelector('.wxo-chat-input-area');
+            if (inputArea) this.assistPanel.el.style.bottom = inputArea.offsetHeight + 'px';
             requestAnimationFrame(() => {
               this.assistPanel.show();
               assistBtn.classList.add('wxo-assist-btn--active');
@@ -2151,6 +2153,10 @@
       if (!this.inputEl) return;
       this.inputEl.style.height = 'auto';
       this.inputEl.style.height = this.inputEl.scrollHeight + 'px';
+      if (this.assistPanel && this.assistPanel.el) {
+        const inputArea = this.el.querySelector('.wxo-chat-input-area');
+        if (inputArea) this.assistPanel.el.style.bottom = inputArea.offsetHeight + 'px';
+      }
     }
     _setInputDisabled(disabled) {
       if (this.inputEl) this.inputEl.disabled = disabled;
