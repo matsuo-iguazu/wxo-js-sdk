@@ -879,7 +879,8 @@ class UIManager {
 
       /* Clause assist panel (absolute overlay inside .wxo-chat-window) */
       .wxo-assist-panel {
-        flex-shrink: 0;
+        flex: 0 1 320px;
+        min-height: 0;
         background: #e8f4ff;
         border-top: 1px solid ${primaryColor};
         box-shadow: 0 -2px 8px rgba(0,0,0,0.1);
@@ -892,7 +893,7 @@ class UIManager {
         transition: max-height 0.25s ease-out, opacity 0.25s ease-out;
       }
       .wxo-assist-panel--visible {
-        max-height: 55%;
+        max-height: 320px;
         opacity: 1;
         pointer-events: all;
       }
