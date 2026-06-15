@@ -3548,6 +3548,9 @@
       .wxo-assist-insert {
         width: 100%;
         padding: 10px;
+        height: auto;
+        line-height: 1.4;
+        box-sizing: border-box;
         background: ${primaryColor};
         color: white;
         border: none;
