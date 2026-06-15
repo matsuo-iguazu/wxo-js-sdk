@@ -1571,6 +1571,293 @@
   // Made with Bob
 
   /**
+   * ContractAssistPanel - clause assist side panel for the chat window
+   *
+   * Accepts clauseAssistData: { "<契約書名>": { "<第N条>": { title, content, clauses: { "1": "..." } } } }
+   * Calls onInsert(text) when user clicks "入力エリアに挿入".
+   */
+  class ContractAssistPanel {
+    constructor({
+      clauseAssistData,
+      onInsert
+    }) {
+      this.data = clauseAssistData;
+      this.onInsert = onInsert;
+      this.el = null;
+      this._visible = false;
+
+      // Selected state
+      this._contract = '';
+      this._article = '';
+      this._clause = '';
+    }
+    render(container) {
+      this.el = document.createElement('div');
+      this.el.className = 'wxo-assist-panel';
+      this.el.innerHTML = `
+      <div class="wxo-assist-header">
+        <span class="wxo-assist-title">📋 条項アシスト</span>
+        <button class="wxo-assist-close" aria-label="閉じる">×</button>
+      </div>
+      <div class="wxo-assist-body">
+        <div class="wxo-assist-row">
+          <label class="wxo-assist-label">契約書</label>
+          <div class="wxo-assist-field">
+            <select class="wxo-assist-select" data-role="contract">
+              <option value="">-- 選択してください --</option>
+            </select>
+          </div>
+        </div>
+        <div class="wxo-assist-row">
+          <label class="wxo-assist-label">条</label>
+          <div class="wxo-assist-field">
+            <select class="wxo-assist-select" data-role="article" disabled>
+              <option value="">-- まず契約書を選択してください --</option>
+            </select>
+            <div class="wxo-assist-preview wxo-assist-preview--empty" data-role="article-preview">条を選択すると本文が表示されます</div>
+          </div>
+        </div>
+        <div class="wxo-assist-row">
+          <label class="wxo-assist-label">項（任意）</label>
+          <div class="wxo-assist-field">
+            <select class="wxo-assist-select" data-role="clause" disabled>
+              <option value="">-- 項なし（条全体） --</option>
+            </select>
+            <div class="wxo-assist-preview wxo-assist-preview--empty" data-role="clause-preview">項を選択すると本文が表示されます</div>
+          </div>
+        </div>
+        <div class="wxo-assist-row">
+          <label class="wxo-assist-label">変更内容</label>
+          <div class="wxo-assist-field">
+            <select class="wxo-assist-select" data-role="change-preset">
+              <option value="">-- サンプルから選択 --</option>
+              <option value="項全体を削除してください。">項全体を削除してください。</option>
+              <option value="△を削除してください。">△を削除してください。</option>
+              <option value="△を○に変更してください。">△を○に変更してください。</option>
+            </select>
+            <textarea class="wxo-assist-change" data-role="change" rows="2" placeholder="または、直接入力してください"></textarea>
+          </div>
+        </div>
+        <div class="wxo-assist-row">
+          <label class="wxo-assist-label">リクエスト文</label>
+          <div class="wxo-assist-generated" data-role="generated">条項を選択すると自動生成されます</div>
+        </div>
+      </div>
+      <div class="wxo-assist-footer">
+        <button class="wxo-assist-insert" data-role="insert" disabled>入力エリアに挿入</button>
+      </div>
+    `;
+      this._contractSel = this.el.querySelector('[data-role="contract"]');
+      this._articleSel = this.el.querySelector('[data-role="article"]');
+      this._clauseSel = this.el.querySelector('[data-role="clause"]');
+      this._articlePreview = this.el.querySelector('[data-role="article-preview"]');
+      this._clausePreview = this.el.querySelector('[data-role="clause-preview"]');
+      this._changePreset = this.el.querySelector('[data-role="change-preset"]');
+      this._changeInput = this.el.querySelector('[data-role="change"]');
+      this._generatedEl = this.el.querySelector('[data-role="generated"]');
+      this._insertBtn = this.el.querySelector('[data-role="insert"]');
+      this._initContractOptions();
+      this._wireEvents();
+      container.appendChild(this.el);
+    }
+    show() {
+      if (!this.el) return;
+      this.el.classList.add('wxo-assist-panel--visible');
+      this._visible = true;
+      this.el.scrollTop = 0;
+    }
+    hide() {
+      if (!this.el) return;
+      this.el.classList.remove('wxo-assist-panel--visible');
+      this._visible = false;
+    }
+    toggle() {
+      if (this._visible) this.hide();else this.show();
+    }
+    get isVisible() {
+      return this._visible;
+    }
+    destroy() {
+      if (this.el && this.el.parentNode) {
+        this.el.parentNode.removeChild(this.el);
+      }
+      this.el = null;
+    }
+
+    // ─── Private ───────────────────────────────────────────────────────────────
+
+    _initContractOptions() {
+      Object.keys(this.data).forEach(name => {
+        const opt = document.createElement('option');
+        opt.value = name;
+        opt.textContent = name;
+        this._contractSel.appendChild(opt);
+      });
+    }
+    _wireEvents() {
+      this.el.querySelector('.wxo-assist-close').addEventListener('click', () => this.hide());
+
+      // Restore full text when opening dropdowns (so preview text is visible while choosing)
+      this._articleSel.addEventListener('mousedown', () => this._restoreFullText(this._articleSel));
+      this._clauseSel.addEventListener('mousedown', () => this._restoreFullText(this._clauseSel));
+      this._contractSel.addEventListener('change', e => this._onContractChange(e.target.value));
+      this._articleSel.addEventListener('change', e => this._onArticleChange(e.target.value));
+      this._clauseSel.addEventListener('change', e => this._onClauseChange(e.target.value));
+      this._changePreset.addEventListener('change', e => {
+        if (e.target.value) {
+          this._changeInput.value = e.target.value;
+          e.target.value = '';
+          this._updateGenerated();
+        }
+      });
+      this._changeInput.addEventListener('input', () => this._updateGenerated());
+      this._insertBtn.addEventListener('click', () => {
+        const text = this._generatedEl.textContent;
+        if (text && !this._insertBtn.disabled) {
+          this.onInsert(text);
+          this.hide();
+        }
+      });
+    }
+    _restoreFullText(selectEl) {
+      Array.from(selectEl.options).forEach(opt => {
+        const full = opt.getAttribute('data-full-text');
+        if (full) opt.textContent = full;
+      });
+    }
+    _onContractChange(contractName) {
+      this._contract = contractName;
+      this._article = '';
+      this._clause = '';
+
+      // Reset article
+      this._articleSel.innerHTML = '<option value="">-- 選択してください --</option>';
+      this._articleSel.disabled = !contractName;
+      this._setPreview(this._articlePreview, null);
+
+      // Reset clause
+      this._clauseSel.innerHTML = '<option value="">-- 項なし（条全体） --</option>';
+      this._clauseSel.disabled = true;
+      this._setPreview(this._clausePreview, null);
+      if (contractName) {
+        const contract = this.data[contractName];
+        Object.keys(contract).forEach(articleNum => {
+          const article = contract[articleNum];
+          const preview30 = article.content.substring(0, 30);
+          const fullText = preview30 ? `${articleNum} (${article.title}) ${preview30}...` : `${articleNum} (${article.title})`;
+          const shortText = `${articleNum} (${article.title})`;
+          const opt = document.createElement('option');
+          opt.value = articleNum;
+          opt.textContent = fullText;
+          opt.setAttribute('data-full-text', fullText);
+          opt.setAttribute('data-short-text', shortText);
+          this._articleSel.appendChild(opt);
+        });
+      }
+      this._updateGenerated();
+    }
+    _onArticleChange(articleNum) {
+      this._article = articleNum;
+      this._clause = '';
+
+      // Reset clause
+      this._clauseSel.innerHTML = '<option value="">-- 項なし（条全体） --</option>';
+      this._clauseSel.disabled = true;
+      this._setPreview(this._clausePreview, null);
+      if (articleNum) {
+        const article = this.data[this._contract][articleNum];
+        this._setPreview(this._articlePreview, article.content);
+
+        // Collapse selected option to short text
+        const sel = this._articleSel.options[this._articleSel.selectedIndex];
+        const short = sel.getAttribute('data-short-text');
+        if (short) sel.textContent = short;
+
+        // Populate clause select if clauses exist
+        const clauseKeys = Object.keys(article.clauses || {});
+        if (clauseKeys.length > 0) {
+          this._clauseSel.disabled = false;
+          clauseKeys.forEach(num => {
+            const content = article.clauses[num];
+            const preview30 = content.substring(0, 30);
+            const fullText = `第${num}項 ${preview30}...`;
+            const shortText = `第${num}項`;
+            const opt = document.createElement('option');
+            opt.value = num;
+            opt.textContent = fullText;
+            opt.setAttribute('data-full-text', fullText);
+            opt.setAttribute('data-short-text', shortText);
+            this._clauseSel.appendChild(opt);
+          });
+        }
+      } else {
+        this._setPreview(this._articlePreview, null);
+      }
+      this._updateGenerated();
+    }
+    _onClauseChange(clauseNum) {
+      this._clause = clauseNum;
+      if (clauseNum) {
+        const content = this.data[this._contract][this._article].clauses[clauseNum];
+        this._setPreview(this._clausePreview, content);
+
+        // Collapse selected option to short text
+        const sel = this._clauseSel.options[this._clauseSel.selectedIndex];
+        const short = sel.getAttribute('data-short-text');
+        if (short) sel.textContent = short;
+      } else {
+        this._setPreview(this._clausePreview, null);
+      }
+      this._updateGenerated();
+    }
+    _setPreview(el, text) {
+      el.innerHTML = '';
+      if (text) {
+        el.classList.remove('wxo-assist-preview--empty');
+        const textEl = document.createElement('div');
+        textEl.className = 'wxo-assist-preview-text';
+        textEl.textContent = text;
+        el.appendChild(textEl);
+        const toggleEl = document.createElement('button');
+        toggleEl.className = 'wxo-assist-preview-toggle';
+        toggleEl.textContent = 'さらに表示 ∨';
+        el.appendChild(toggleEl);
+        requestAnimationFrame(() => {
+          if (textEl.scrollHeight <= textEl.clientHeight + 2) {
+            toggleEl.style.display = 'none';
+          }
+        });
+        let expanded = false;
+        toggleEl.addEventListener('click', () => {
+          expanded = !expanded;
+          textEl.classList.toggle('wxo-assist-preview-text--expanded', expanded);
+          toggleEl.textContent = expanded ? '少なく表示 ∧' : 'さらに表示 ∨';
+        });
+      } else {
+        el.classList.add('wxo-assist-preview--empty');
+        el.textContent = el === this._articlePreview ? '条を選択すると本文が表示されます' : '項を選択すると本文が表示されます';
+      }
+    }
+    _updateGenerated() {
+      if (!this._contract || !this._article) {
+        this._generatedEl.textContent = '条項を選択すると自動生成されます';
+        this._insertBtn.disabled = true;
+        return;
+      }
+      const article = this.data[this._contract][this._article];
+      let text = `${this._contract}：${this._article} (${article.title})`;
+      if (this._clause) text += `第${this._clause}項`;
+      text += 'について、';
+      const change = this._changeInput.value.trim();
+      text += change || '変更をお願いします。';
+      this._generatedEl.textContent = text;
+      this._insertBtn.disabled = false;
+    }
+  }
+
+  // Made with Bob
+
+  /**
    * Chat window UI component
    * Renders the full chat interface: header, messages, input, feedback buttons
    */
@@ -1584,7 +1871,9 @@
       onMinimize,
       onReload,
       feedbackEnabled = true,
-      feedbackOptions = null
+      feedbackOptions = null,
+      clauseAssistData = null,
+      clauseAssistAutoOpen = true
     }) {
       this.agent = agent;
       this.starterSettings = starterSettings;
@@ -1595,6 +1884,8 @@
       this.onReload = onReload;
       this.feedbackEnabled = feedbackEnabled;
       this.feedbackOptions = feedbackOptions;
+      this.clauseAssistData = clauseAssistData;
+      this.clauseAssistAutoOpen = clauseAssistAutoOpen;
       this.el = null;
       this.messagesEl = null;
       this.inputEl = null;
@@ -1606,10 +1897,12 @@
       this.isExpanded = false;
       this.welcomeEl = null;
       this._windowLoadingEl = null;
+      this.assistPanel = null;
     }
     render(container) {
       this.el = document.createElement('div');
       this.el.className = 'wxo-chat-window';
+      const assistBtnHtml = this.clauseAssistData ? `<button class="wxo-assist-btn" data-tooltip="条項アシスト" aria-label="条項アシスト">📋</button>` : '';
       this.el.innerHTML = `
       <div class="wxo-chat-header">
         <div class="wxo-chat-header__left">
@@ -1630,8 +1923,9 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><polyline points="6 9 12 15 18 9"></polyline><line x1="4" y1="19" x2="20" y2="19"></line></svg>
       </button>
       <div class="wxo-chat-input-area">
-        <div class="wxo-input-wrap">
+        <div class="wxo-input-wrap${this.clauseAssistData ? ' wxo-input-wrap--with-assist' : ''}">
           <textarea class="wxo-chat-input" rows="1" placeholder="何かを入力してください..."></textarea>
+          ${assistBtnHtml}
           <button class="wxo-chat-send" data-tooltip="送信">
             <svg viewBox="0 0 32 32" fill="currentColor" width="16" height="16" xmlns="http://www.w3.org/2000/svg">
               <path d="M27.45,15.11l-22-11a1,1,0,0,0-1.08.12,1,1,0,0,0-.33,1L7,16,4,26.74A1,1,0,0,0,5,28a1,1,0,0,0,.45-.11l22-11a1,1,0,0,0,0-1.78Zm-20.9,10L8.76,17H18V15H8.76L6.55,6.89,24.76,16Z"/>
@@ -1680,6 +1974,36 @@
       });
       this.sendBtn.disabled = true; // initially empty
 
+      // Clause assist panel
+      if (this.clauseAssistData) {
+        this.assistPanel = new ContractAssistPanel({
+          clauseAssistData: this.clauseAssistData,
+          onInsert: text => {
+            this.inputEl.value = text;
+            this.sendBtn.disabled = false;
+            this._resizeInput();
+            this.inputEl.focus();
+          }
+        });
+        this.assistPanel.render(this.el);
+        const assistBtn = this.el.querySelector('.wxo-assist-btn');
+        assistBtn.addEventListener('click', () => {
+          const active = this.assistPanel.isVisible;
+          this.assistPanel.toggle();
+          assistBtn.classList.toggle('wxo-assist-btn--active', !active);
+        });
+        if (this.clauseAssistAutoOpen) {
+          container.appendChild(this.el);
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              this.assistPanel.show();
+              assistBtn.classList.add('wxo-assist-btn--active');
+            });
+          });
+          this._scrollToBottom();
+          return;
+        }
+      }
       container.appendChild(this.el);
       this._scrollToBottom();
     }
@@ -2187,12 +2511,14 @@
         this.inputEl.value = '';
         this._resizeInput();
       }
+      if (this.assistPanel) this.assistPanel.hide();
       this._renderWelcomeScreen();
       this._setInputDisabled(false);
       if (this.sendBtn) this.sendBtn.disabled = true;
       if (this.scrollBtnEl) this.scrollBtnEl.style.display = 'none';
     }
     destroy() {
+      if (this.assistPanel) this.assistPanel.destroy();
       if (this.el && this.el.parentNode) {
         this.el.parentNode.removeChild(this.el);
       }
@@ -2329,6 +2655,8 @@
         messages: [],
         feedbackEnabled,
         feedbackOptions,
+        clauseAssistData: agent.clauseAssistData || null,
+        clauseAssistAutoOpen: agent.clauseAssistAutoOpen !== false,
         onSend: async text => {
           await this.client.sendMessage(text);
         },
@@ -3027,6 +3355,203 @@
         border-top-color: transparent;
         border-bottom-color: #161616;
       }
+
+      /* Clause assist button (📋) in input wrap */
+      .wxo-assist-btn {
+        position: absolute;
+        right: 46px;
+        bottom: 13px;
+        width: 26px;
+        height: 26px;
+        background: none;
+        border: none;
+        border-radius: 50%;
+        font-size: 15px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #525252;
+        transition: background 0.15s, color 0.15s;
+        line-height: 1;
+        padding: 0;
+      }
+      .wxo-assist-btn:hover { background: #f4f4f4; }
+      .wxo-assist-btn--active { color: ${primaryColor}; background: #e8f4ff; }
+
+      /* Wider right padding when assist button is present */
+      .wxo-input-wrap--with-assist .wxo-chat-input { padding-right: 80px; }
+
+      /* Clause assist panel (absolute overlay inside .wxo-chat-window) */
+      .wxo-assist-panel {
+        position: absolute;
+        bottom: 53px;
+        left: 0;
+        right: 0;
+        max-height: calc(100% - 53px - 48px);
+        background: #e8f4ff;
+        border-top: 1px solid ${primaryColor};
+        box-shadow: 0 -2px 8px rgba(0,0,0,0.1);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        transform: translateY(100%);
+        opacity: 0;
+        pointer-events: none;
+        transition: transform 0.25s ease-out, opacity 0.25s ease-out;
+        z-index: 20;
+      }
+      .wxo-assist-panel--visible {
+        transform: translateY(0);
+        opacity: 1;
+        pointer-events: all;
+      }
+      .wxo-assist-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 12px 16px 10px;
+        border-bottom: 1px solid #c6d9ee;
+        flex-shrink: 0;
+      }
+      .wxo-assist-title {
+        font-size: 13px;
+        font-weight: 600;
+        color: #161616;
+      }
+      .wxo-assist-close {
+        background: transparent;
+        border: none;
+        color: #525252;
+        font-size: 20px;
+        line-height: 1;
+        cursor: pointer;
+        padding: 2px 6px;
+        border-radius: 4px;
+      }
+      .wxo-assist-close:hover { background: #d0e8f8; color: #161616; }
+      .wxo-assist-body {
+        flex: 1;
+        overflow-y: auto;
+        padding: 12px 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .wxo-assist-row {
+        display: flex;
+        gap: 12px;
+        align-items: flex-start;
+      }
+      .wxo-assist-label {
+        font-size: 12px;
+        font-weight: 600;
+        color: #525252;
+        min-width: 72px;
+        flex-shrink: 0;
+        padding-top: 8px;
+      }
+      .wxo-assist-field {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .wxo-assist-select {
+        width: 100%;
+        padding: 6px 10px;
+        border: 1px solid #c6c6c6;
+        border-radius: 4px;
+        font-size: 13px;
+        font-family: inherit;
+        background: white;
+        box-sizing: border-box;
+      }
+      .wxo-assist-select:focus {
+        outline: none;
+        border-color: ${primaryColor};
+        box-shadow: 0 0 0 1px ${primaryColor};
+      }
+      .wxo-assist-select:disabled { background: #f4f4f4; color: #8d8d8d; }
+      .wxo-assist-preview {
+        background: #f4f4f4;
+        border: 1px solid #e0e0e0;
+        border-radius: 4px;
+        padding: 8px 10px;
+        font-size: 12px;
+        color: #161616;
+        line-height: 1.5;
+        min-height: 40px;
+      }
+      .wxo-assist-preview--empty { color: #8d8d8d; font-style: italic; }
+      .wxo-assist-preview-text {
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 3;
+        overflow: hidden;
+      }
+      .wxo-assist-preview-text--expanded {
+        display: block;
+        overflow: visible;
+      }
+      .wxo-assist-preview-toggle {
+        background: none;
+        border: none;
+        color: ${primaryColor};
+        font-size: 11px;
+        font-family: inherit;
+        cursor: pointer;
+        padding: 3px 0;
+        display: block;
+        width: fit-content;
+        margin-left: auto;
+        margin-top: 6px;
+      }
+      .wxo-assist-change {
+        width: 100%;
+        padding: 6px 10px;
+        border: 1px solid #c6c6c6;
+        border-radius: 4px;
+        font-size: 13px;
+        font-family: inherit;
+        resize: none;
+        box-sizing: border-box;
+      }
+      .wxo-assist-change:focus {
+        outline: none;
+        border-color: ${primaryColor};
+        box-shadow: 0 0 0 1px ${primaryColor};
+      }
+      .wxo-assist-generated {
+        flex: 1;
+        background: #f4f4f4;
+        border: 1px solid #e0e0e0;
+        border-radius: 4px;
+        padding: 8px 10px;
+        font-size: 13px;
+        color: #161616;
+        line-height: 1.5;
+        min-height: 40px;
+      }
+      .wxo-assist-footer {
+        padding: 10px 16px 12px;
+        border-top: 1px solid #c6d9ee;
+        flex-shrink: 0;
+      }
+      .wxo-assist-insert {
+        width: 100%;
+        padding: 10px;
+        background: ${primaryColor};
+        color: white;
+        border: none;
+        border-radius: 4px;
+        font-size: 13px;
+        font-family: inherit;
+        cursor: pointer;
+        transition: background 0.15s;
+      }
+      .wxo-assist-insert:hover:not(:disabled) { background: #0353e9; }
+      .wxo-assist-insert:disabled { background: #c6c6c6; cursor: not-allowed; }
     `;
       document.head.appendChild(style);
     }
