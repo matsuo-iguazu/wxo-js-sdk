@@ -125,7 +125,13 @@ class Config {
       defaultLocale: null,
       // Locale for welcome message / starter prompts (e.g. 'ja', 'en'). Falls back to browser language.
       feedbackWebhookUrl: null,
-      // POST destination for feedback data (optional)
+      // POST destination for feedback data (optional, legacy Code Engine)
+      supabaseUrl: null,
+      // Supabase project URL (e.g. 'https://xxxx.supabase.co')
+      supabaseAnonKey: null,
+      // Supabase anon key
+      supabaseTable: 'wxo_log',
+      // Supabase table name for feedback
       feedbackUserInfo: null,
       // User info object to spread into feedback payload (optional)
       feedbackOptions: {
@@ -294,12 +300,26 @@ class Config {
   }
 
   /**
+   * Get Supabase config for feedback storage
+   * @returns {{url, anonKey, table}|null}
+   */
+  getSupabaseConfig() {
+    var _this$config4, _this$config5;
+    if (!((_this$config4 = this.config) !== null && _this$config4 !== void 0 && _this$config4.supabaseUrl) || !((_this$config5 = this.config) !== null && _this$config5 !== void 0 && _this$config5.supabaseAnonKey)) return null;
+    return {
+      url: this.config.supabaseUrl,
+      anonKey: this.config.supabaseAnonKey,
+      table: this.config.supabaseTable || 'wxo_log'
+    };
+  }
+
+  /**
    * Get feedback user info (spread into payload)
    * @returns {Object|null}
    */
   getFeedbackUserInfo() {
-    var _this$config4;
-    return ((_this$config4 = this.config) === null || _this$config4 === void 0 ? void 0 : _this$config4.feedbackUserInfo) || null;
+    var _this$config6;
+    return ((_this$config6 = this.config) === null || _this$config6 === void 0 ? void 0 : _this$config6.feedbackUserInfo) || null;
   }
 
   /**
@@ -307,8 +327,8 @@ class Config {
    * @returns {Object}
    */
   getFeedbackOptions() {
-    var _this$config5;
-    return ((_this$config5 = this.config) === null || _this$config5 === void 0 ? void 0 : _this$config5.feedbackOptions) || null;
+    var _this$config7;
+    return ((_this$config7 = this.config) === null || _this$config7 === void 0 ? void 0 : _this$config7.feedbackOptions) || null;
   }
 
   /**
@@ -317,8 +337,8 @@ class Config {
    * @returns {string|null}
    */
   getLocale() {
-    var _this$config6;
-    return ((_this$config6 = this.config) === null || _this$config6 === void 0 ? void 0 : _this$config6.defaultLocale) || (typeof navigator !== 'undefined' ? navigator.language : null) || null;
+    var _this$config8;
+    return ((_this$config8 = this.config) === null || _this$config8 === void 0 ? void 0 : _this$config8.defaultLocale) || (typeof navigator !== 'undefined' ? navigator.language : null) || null;
   }
 
   /**
@@ -326,8 +346,8 @@ class Config {
    * @returns {boolean} True if debug mode is enabled
    */
   isDebug() {
-    var _this$config7;
-    return ((_this$config7 = this.config) === null || _this$config7 === void 0 ? void 0 : _this$config7.debug) === true;
+    var _this$config9;
+    return ((_this$config9 = this.config) === null || _this$config9 === void 0 ? void 0 : _this$config9.debug) === true;
   }
 }
 
@@ -799,12 +819,11 @@ class ChatManager {
                     return c.response_type === 'text' && !((_c$text = c.text) !== null && _c$text !== void 0 && _c$text.toLowerCase().includes('new flow has started'));
                   }));
                 });
-                var lastMsg = agentMessages.at(-1);
-                if (lastMsg !== null && lastMsg !== void 0 && lastMsg.content) {
-                  finalText = lastMsg.content.filter(c => {
+                if (agentMessages.length > 0) {
+                  finalText = agentMessages.map(m => m.content.filter(c => {
                     var _c$text2;
                     return c.response_type === 'text' && !((_c$text2 = c.text) !== null && _c$text2 !== void 0 && _c$text2.toLowerCase().includes('new flow has started'));
-                  }).map(c => c.text || '').join('');
+                  }).map(c => c.text || '').join('')).join('\n\n');
                 }
               } catch (e) {
                 if (_this6.config.isDebug()) {
@@ -1040,7 +1059,6 @@ class ChatManager {
     return _asyncToGenerator(function* () {
       var categories = _arguments3.length > 2 && _arguments3[2] !== undefined ? _arguments3[2] : [];
       var text = _arguments3.length > 3 && _arguments3[3] !== undefined ? _arguments3[3] : '';
-      var webhookUrl = _this8.config.getFeedbackWebhookUrl();
       var session = _this8.sessions.get(_this8.currentAgentId);
       var agentConfig = _this8.config.getAgent(_this8.currentAgentId);
       var feedbackUserInfo = _this8.config.getFeedbackUserInfo() || {};
@@ -1051,13 +1069,44 @@ class ChatManager {
       var precedingMsg = agentMsgIndex > 0 ? messages[agentMsgIndex - 1] : null;
       var question = (precedingMsg === null || precedingMsg === void 0 ? void 0 : precedingMsg.sender) === 'user' ? precedingMsg.text : (session === null || session === void 0 ? void 0 : session.lastUserMessage) || '';
       var answer = agentMsgIndex >= 0 ? messages[agentMsgIndex].text || '' : '';
+      var categoriesStr = Array.isArray(categories) ? categories.join(', ') : '';
+      var agentId = (agentConfig === null || agentConfig === void 0 ? void 0 : agentConfig.agentId) || _this8.currentAgentId;
+      var supabase = _this8.config.getSupabaseConfig();
+      if (supabase) {
+        var row = {
+          garoonId: String(feedbackUserInfo.id || feedbackUserInfo.loginName || ''),
+          name: feedbackUserInfo.displayName || feedbackUserInfo.name || '',
+          question,
+          answer,
+          isPositive: isPositive ? '1' : '0',
+          categories: categoriesStr,
+          text,
+          agentId
+        };
+        if (_this8.config.isDebug()) {
+          console.log('[wxo-sdk] Supabase feedback row:', row);
+        }
+        yield fetch("".concat(supabase.url, "/rest/v1/").concat(supabase.table), {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': supabase.anonKey,
+            'Authorization': "Bearer ".concat(supabase.anonKey)
+          },
+          body: JSON.stringify(row)
+        });
+        return;
+      }
+
+      // Legacy: Code Engine webhook
+      var webhookUrl = _this8.config.getFeedbackWebhookUrl();
       var payload = _objectSpread2(_objectSpread2({}, feedbackUserInfo), {}, {
         question,
         answer,
         isPositive: isPositive ? 1 : 0,
-        categories: Array.isArray(categories) ? categories.join(', ') : '',
+        categories: categoriesStr,
         text,
-        agentId: (agentConfig === null || agentConfig === void 0 ? void 0 : agentConfig.agentId) || _this8.currentAgentId
+        agentId
       });
       if (_this8.config.isDebug()) {
         console.log('[wxo-sdk] Feedback payload:', payload);

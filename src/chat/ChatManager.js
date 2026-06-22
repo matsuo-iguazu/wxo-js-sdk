@@ -231,12 +231,14 @@ class ChatManager {
                 m.role === 'assistant' &&
                 m.content?.some(c => c.response_type === 'text' && !c.text?.toLowerCase().includes('new flow has started'))
               );
-              const lastMsg = agentMessages.at(-1);
-              if (lastMsg?.content) {
-                finalText = lastMsg.content
-                  .filter(c => c.response_type === 'text' && !c.text?.toLowerCase().includes('new flow has started'))
-                  .map(c => c.text || '')
-                  .join('');
+              if (agentMessages.length > 0) {
+                finalText = agentMessages
+                  .map(m => m.content
+                    .filter(c => c.response_type === 'text' && !c.text?.toLowerCase().includes('new flow has started'))
+                    .map(c => c.text || '')
+                    .join('')
+                  )
+                  .join('\n\n');
               }
             } catch (e) {
               if (this.config.isDebug()) {
@@ -434,7 +436,6 @@ class ChatManager {
    * @param {string} text - free text comment
    */
   async sendFeedback(messageId, isPositive, categories = [], text = '') {
-    const webhookUrl = this.config.getFeedbackWebhookUrl();
     const session = this.sessions.get(this.currentAgentId);
     const agentConfig = this.config.getAgent(this.currentAgentId);
     const feedbackUserInfo = this.config.getFeedbackUserInfo() || {};
@@ -445,15 +446,46 @@ class ChatManager {
     const precedingMsg = agentMsgIndex > 0 ? messages[agentMsgIndex - 1] : null;
     const question = precedingMsg?.sender === 'user' ? precedingMsg.text : (session?.lastUserMessage || '');
     const answer = agentMsgIndex >= 0 ? (messages[agentMsgIndex].text || '') : '';
+    const categoriesStr = Array.isArray(categories) ? categories.join(', ') : '';
+    const agentId = agentConfig?.agentId || this.currentAgentId;
 
+    const supabase = this.config.getSupabaseConfig();
+    if (supabase) {
+      const row = {
+        garoonId: String(feedbackUserInfo.id || feedbackUserInfo.loginName || ''),
+        name: feedbackUserInfo.displayName || feedbackUserInfo.name || '',
+        question,
+        answer,
+        isPositive: isPositive ? '1' : '0',
+        categories: categoriesStr,
+        text,
+        agentId,
+      };
+      if (this.config.isDebug()) {
+        console.log('[wxo-sdk] Supabase feedback row:', row);
+      }
+      await fetch(`${supabase.url}/rest/v1/${supabase.table}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': supabase.anonKey,
+          'Authorization': `Bearer ${supabase.anonKey}`,
+        },
+        body: JSON.stringify(row),
+      });
+      return;
+    }
+
+    // Legacy: Code Engine webhook
+    const webhookUrl = this.config.getFeedbackWebhookUrl();
     const payload = {
       ...feedbackUserInfo,
       question,
       answer,
       isPositive: isPositive ? 1 : 0,
-      categories: Array.isArray(categories) ? categories.join(', ') : '',
+      categories: categoriesStr,
       text,
-      agentId: agentConfig?.agentId || this.currentAgentId,
+      agentId,
     };
 
     if (this.config.isDebug()) {

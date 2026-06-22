@@ -42,7 +42,13 @@
         defaultLocale: null,
         // Locale for welcome message / starter prompts (e.g. 'ja', 'en'). Falls back to browser language.
         feedbackWebhookUrl: null,
-        // POST destination for feedback data (optional)
+        // POST destination for feedback data (optional, legacy Code Engine)
+        supabaseUrl: null,
+        // Supabase project URL (e.g. 'https://xxxx.supabase.co')
+        supabaseAnonKey: null,
+        // Supabase anon key
+        supabaseTable: 'wxo_log',
+        // Supabase table name for feedback
         feedbackUserInfo: null,
         // User info object to spread into feedback payload (optional)
         feedbackOptions: {
@@ -209,6 +215,19 @@
      */
     getFeedbackWebhookUrl() {
       return this.config?.feedbackWebhookUrl || null;
+    }
+
+    /**
+     * Get Supabase config for feedback storage
+     * @returns {{url, anonKey, table}|null}
+     */
+    getSupabaseConfig() {
+      if (!this.config?.supabaseUrl || !this.config?.supabaseAnonKey) return null;
+      return {
+        url: this.config.supabaseUrl,
+        anonKey: this.config.supabaseAnonKey,
+        table: this.config.supabaseTable || 'wxo_log'
+      };
     }
 
     /**
@@ -660,9 +679,8 @@
               try {
                 const messages = await this.httpClient.get(`/mfe_home_archer/api/v1/threads/${session.threadId}/messages`);
                 const agentMessages = (messages || []).filter(m => m.role === 'assistant' && m.content?.some(c => c.response_type === 'text' && !c.text?.toLowerCase().includes('new flow has started')));
-                const lastMsg = agentMessages.at(-1);
-                if (lastMsg?.content) {
-                  finalText = lastMsg.content.filter(c => c.response_type === 'text' && !c.text?.toLowerCase().includes('new flow has started')).map(c => c.text || '').join('');
+                if (agentMessages.length > 0) {
+                  finalText = agentMessages.map(m => m.content.filter(c => c.response_type === 'text' && !c.text?.toLowerCase().includes('new flow has started')).map(c => c.text || '').join('')).join('\n\n');
                 }
               } catch (e) {
                 if (this.config.isDebug()) {
@@ -882,7 +900,6 @@
      * @param {string} text - free text comment
      */
     async sendFeedback(messageId, isPositive, categories = [], text = '') {
-      const webhookUrl = this.config.getFeedbackWebhookUrl();
       const session = this.sessions.get(this.currentAgentId);
       const agentConfig = this.config.getAgent(this.currentAgentId);
       const feedbackUserInfo = this.config.getFeedbackUserInfo() || {};
@@ -893,14 +910,45 @@
       const precedingMsg = agentMsgIndex > 0 ? messages[agentMsgIndex - 1] : null;
       const question = precedingMsg?.sender === 'user' ? precedingMsg.text : session?.lastUserMessage || '';
       const answer = agentMsgIndex >= 0 ? messages[agentMsgIndex].text || '' : '';
+      const categoriesStr = Array.isArray(categories) ? categories.join(', ') : '';
+      const agentId = agentConfig?.agentId || this.currentAgentId;
+      const supabase = this.config.getSupabaseConfig();
+      if (supabase) {
+        const row = {
+          garoonId: String(feedbackUserInfo.id || feedbackUserInfo.loginName || ''),
+          name: feedbackUserInfo.displayName || feedbackUserInfo.name || '',
+          question,
+          answer,
+          isPositive: isPositive ? '1' : '0',
+          categories: categoriesStr,
+          text,
+          agentId
+        };
+        if (this.config.isDebug()) {
+          console.log('[wxo-sdk] Supabase feedback row:', row);
+        }
+        await fetch(`${supabase.url}/rest/v1/${supabase.table}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': supabase.anonKey,
+            'Authorization': `Bearer ${supabase.anonKey}`
+          },
+          body: JSON.stringify(row)
+        });
+        return;
+      }
+
+      // Legacy: Code Engine webhook
+      const webhookUrl = this.config.getFeedbackWebhookUrl();
       const payload = {
         ...feedbackUserInfo,
         question,
         answer,
         isPositive: isPositive ? 1 : 0,
-        categories: Array.isArray(categories) ? categories.join(', ') : '',
+        categories: categoriesStr,
         text,
-        agentId: agentConfig?.agentId || this.currentAgentId
+        agentId
       };
       if (this.config.isDebug()) {
         console.log('[wxo-sdk] Feedback payload:', payload);
