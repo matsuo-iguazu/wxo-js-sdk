@@ -27,7 +27,7 @@ async function extractPreamble(docxPath) {
   const startIdx = paras.findIndex(p => p.startsWith('次に記名'));
   if (startIdx === -1) return '';
 
-  const sigPattern = /^[（(](?:買主|売主|甲|乙|提供者|購買者|委託者|受託者)/;
+  const sigPattern = /^[（(]/;           // any line starting with ( or （ = signature block
   const datePattern = /^(?:年|契約締結日)/;
 
   const lines = [];
@@ -57,12 +57,7 @@ async function extractPreamble(docxPath) {
       continue;
     }
 
-    if (contract['前文']) {
-      console.log(`  → 前文 already exists, skipping`);
-      continue;
-    }
-
-    // Prepend 前文 as first key
+    // Prepend 前文 as first key (overwrite if already exists)
     const updated = { '前文': { title: '前文', content: preamble, clauses: {} }, ...contract };
     jsons[jsonFile][contractKey] = updated;
     console.log(`  → added 前文 to ${contractKey}`);
