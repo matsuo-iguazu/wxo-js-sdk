@@ -1677,13 +1677,7 @@
         <div class="wxo-assist-row">
           <label class="wxo-assist-label">変更内容</label>
           <div class="wxo-assist-field">
-            <select class="wxo-assist-select" data-role="change-preset">
-              <option value="">-- サンプルから選択 --</option>
-              <option value="項全体を削除してください。">項全体を削除してください。</option>
-              <option value="△を削除してください。">△を削除してください。</option>
-              <option value="△を○に変更してください。">△を○に変更してください。</option>
-            </select>
-            <textarea class="wxo-assist-change" data-role="change" rows="2" placeholder="または、直接入力してください"></textarea>
+            <textarea class="wxo-assist-change" data-role="change" rows="2" placeholder="変更内容を入力してください"></textarea>
           </div>
         </div>
         <div class="wxo-assist-row">
@@ -1700,7 +1694,6 @@
       this._clauseSel = this.el.querySelector('[data-role="clause"]');
       this._articlePreview = this.el.querySelector('[data-role="article-preview"]');
       this._clausePreview = this.el.querySelector('[data-role="clause-preview"]');
-      this._changePreset = this.el.querySelector('[data-role="change-preset"]');
       this._changeInput = this.el.querySelector('[data-role="change"]');
       this._generatedEl = this.el.querySelector('[data-role="generated"]');
       this._insertBtn = this.el.querySelector('[data-role="insert"]');
@@ -1751,13 +1744,6 @@
       this._contractSel.addEventListener('change', e => this._onContractChange(e.target.value));
       this._articleSel.addEventListener('change', e => this._onArticleChange(e.target.value));
       this._clauseSel.addEventListener('change', e => this._onClauseChange(e.target.value));
-      this._changePreset.addEventListener('change', e => {
-        if (e.target.value) {
-          this._changeInput.value = e.target.value;
-          e.target.value = '';
-          this._updateGenerated();
-        }
-      });
       this._changeInput.addEventListener('input', () => this._updateGenerated());
       this._insertBtn.addEventListener('click', () => {
         const text = this._generatedEl.textContent;
@@ -1821,10 +1807,21 @@
         const short = sel.getAttribute('data-short-text');
         if (short) sel.textContent = short;
 
-        // Populate clause select if clauses exist
+        // Populate clause select: "前文" first (if article has content), then numbered clauses
         const clauseKeys = Object.keys(article.clauses || {});
-        if (clauseKeys.length > 0) {
+        const hasPreamble = !!(article.content && article.content.trim());
+        if (hasPreamble || clauseKeys.length > 0) {
           this._clauseSel.disabled = false;
+          if (hasPreamble) {
+            const preview30 = article.content.substring(0, 30);
+            const fullText = `前文 ${preview30}...`;
+            const opt = document.createElement('option');
+            opt.value = '__preamble__';
+            opt.textContent = fullText;
+            opt.setAttribute('data-full-text', fullText);
+            opt.setAttribute('data-short-text', '前文');
+            this._clauseSel.appendChild(opt);
+          }
           clauseKeys.forEach(num => {
             const content = article.clauses[num];
             const preview30 = content.substring(0, 30);
@@ -1846,7 +1843,8 @@
     _onClauseChange(clauseNum) {
       this._clause = clauseNum;
       if (clauseNum) {
-        const content = this.data[this._contract][this._article].clauses[clauseNum];
+        const article = this.data[this._contract][this._article];
+        const content = clauseNum === '__preamble__' ? article.content : article.clauses[clauseNum];
         this._setPreview(this._clausePreview, content);
 
         // Collapse selected option to short text
@@ -1894,7 +1892,7 @@
       }
       const article = this.data[this._contract][this._article];
       let text = `${this._contract}：${this._article} (${article.title})`;
-      if (this._clause) text += `第${this._clause}項`;
+      if (this._clause === '__preamble__') text += '前文';else if (this._clause) text += `第${this._clause}項`;
       text += 'について、';
       const change = this._changeInput.value.trim();
       text += change || '変更をお願いします。';
@@ -2573,6 +2571,17 @@
       this._setInputDisabled(false);
       if (this.sendBtn) this.sendBtn.disabled = true;
       if (this.scrollBtnEl) this.scrollBtnEl.style.display = 'none';
+      if (this.assistPanel && this.clauseAssistAutoOpen) {
+        requestAnimationFrame(() => {
+          const inputArea = this.el && this.el.querySelector('.wxo-chat-input-area');
+          if (inputArea && this.assistPanel.el) this.assistPanel.el.style.bottom = inputArea.offsetHeight + 'px';
+          requestAnimationFrame(() => {
+            this.assistPanel.show();
+            const assistBtn = this.el && this.el.querySelector('.wxo-assist-btn');
+            if (assistBtn) assistBtn.classList.add('wxo-assist-btn--active');
+          });
+        });
+      }
     }
     destroy() {
       if (this.assistPanel) this.assistPanel.destroy();

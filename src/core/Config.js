@@ -34,7 +34,10 @@ class Config {
         voiceInput: false
       },
       defaultLocale: null,       // Locale for welcome message / starter prompts (e.g. 'ja', 'en'). Falls back to browser language.
-      feedbackWebhookUrl: null,  // POST destination for feedback data (optional)
+      feedbackWebhookUrl: null,  // POST destination for feedback data (optional, legacy Code Engine)
+      supabaseUrl: null,         // Supabase project URL (e.g. 'https://xxxx.supabase.co')
+      supabaseAnonKey: null,     // Supabase anon key
+      supabaseTable: 'wxo_log',  // Supabase table name for feedback
       feedbackUserInfo: null,    // User info object to spread into feedback payload (optional)
       feedbackOptions: {
         positive: {
@@ -204,6 +207,19 @@ class Config {
    */
   getFeedbackWebhookUrl() {
     return this.config?.feedbackWebhookUrl || null;
+  }
+
+  /**
+   * Get Supabase config for feedback storage
+   * @returns {{url, anonKey, table}|null}
+   */
+  getSupabaseConfig() {
+    if (!this.config?.supabaseUrl || !this.config?.supabaseAnonKey) return null;
+    return {
+      url: this.config.supabaseUrl,
+      anonKey: this.config.supabaseAnonKey,
+      table: this.config.supabaseTable || 'wxo_log',
+    };
   }
 
   /**

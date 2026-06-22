@@ -699,6 +699,17 @@ class ChatWindow {
     this._setInputDisabled(false);
     if (this.sendBtn) this.sendBtn.disabled = true;
     if (this.scrollBtnEl) this.scrollBtnEl.style.display = 'none';
+    if (this.assistPanel && this.clauseAssistAutoOpen) {
+      requestAnimationFrame(() => {
+        const inputArea = this.el && this.el.querySelector('.wxo-chat-input-area');
+        if (inputArea && this.assistPanel.el) this.assistPanel.el.style.bottom = inputArea.offsetHeight + 'px';
+        requestAnimationFrame(() => {
+          this.assistPanel.show();
+          const assistBtn = this.el && this.el.querySelector('.wxo-assist-btn');
+          if (assistBtn) assistBtn.classList.add('wxo-assist-btn--active');
+        });
+      });
+    }
   }
 
   destroy() {

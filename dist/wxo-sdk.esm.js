@@ -1835,13 +1835,12 @@ class ContractAssistPanel {
   render(container) {
     this.el = document.createElement('div');
     this.el.className = 'wxo-assist-panel';
-    this.el.innerHTML = "\n      <div class=\"wxo-assist-header\">\n        <span class=\"wxo-assist-title\">\uD83D\uDCCB \u6761\u9805\u30A2\u30B7\u30B9\u30C8</span>\n        <button class=\"wxo-assist-close\" aria-label=\"\u9589\u3058\u308B\">\xD7</button>\n      </div>\n      <div class=\"wxo-assist-body\">\n        <div class=\"wxo-assist-row\">\n          <label class=\"wxo-assist-label\">\u5951\u7D04\u66F8</label>\n          <div class=\"wxo-assist-field\">\n            <select class=\"wxo-assist-select\" data-role=\"contract\">\n              <option value=\"\">-- \u9078\u629E\u3057\u3066\u304F\u3060\u3055\u3044 --</option>\n            </select>\n          </div>\n        </div>\n        <div class=\"wxo-assist-row\">\n          <label class=\"wxo-assist-label\">\u6761</label>\n          <div class=\"wxo-assist-field\">\n            <select class=\"wxo-assist-select\" data-role=\"article\" disabled>\n              <option value=\"\">-- \u307E\u305A\u5951\u7D04\u66F8\u3092\u9078\u629E\u3057\u3066\u304F\u3060\u3055\u3044 --</option>\n            </select>\n            <div class=\"wxo-assist-preview wxo-assist-preview--empty\" data-role=\"article-preview\">\u6761\u3092\u9078\u629E\u3059\u308B\u3068\u672C\u6587\u304C\u8868\u793A\u3055\u308C\u307E\u3059</div>\n          </div>\n        </div>\n        <div class=\"wxo-assist-row\">\n          <label class=\"wxo-assist-label\">\u9805\uFF08\u4EFB\u610F\uFF09</label>\n          <div class=\"wxo-assist-field\">\n            <select class=\"wxo-assist-select\" data-role=\"clause\" disabled>\n              <option value=\"\">-- \u9805\u306A\u3057\uFF08\u6761\u5168\u4F53\uFF09 --</option>\n            </select>\n            <div class=\"wxo-assist-preview wxo-assist-preview--empty\" data-role=\"clause-preview\">\u9805\u3092\u9078\u629E\u3059\u308B\u3068\u672C\u6587\u304C\u8868\u793A\u3055\u308C\u307E\u3059</div>\n          </div>\n        </div>\n        <div class=\"wxo-assist-row\">\n          <label class=\"wxo-assist-label\">\u5909\u66F4\u5185\u5BB9</label>\n          <div class=\"wxo-assist-field\">\n            <select class=\"wxo-assist-select\" data-role=\"change-preset\">\n              <option value=\"\">-- \u30B5\u30F3\u30D7\u30EB\u304B\u3089\u9078\u629E --</option>\n              <option value=\"\u9805\u5168\u4F53\u3092\u524A\u9664\u3057\u3066\u304F\u3060\u3055\u3044\u3002\">\u9805\u5168\u4F53\u3092\u524A\u9664\u3057\u3066\u304F\u3060\u3055\u3044\u3002</option>\n              <option value=\"\u25B3\u3092\u524A\u9664\u3057\u3066\u304F\u3060\u3055\u3044\u3002\">\u25B3\u3092\u524A\u9664\u3057\u3066\u304F\u3060\u3055\u3044\u3002</option>\n              <option value=\"\u25B3\u3092\u25CB\u306B\u5909\u66F4\u3057\u3066\u304F\u3060\u3055\u3044\u3002\">\u25B3\u3092\u25CB\u306B\u5909\u66F4\u3057\u3066\u304F\u3060\u3055\u3044\u3002</option>\n            </select>\n            <textarea class=\"wxo-assist-change\" data-role=\"change\" rows=\"2\" placeholder=\"\u307E\u305F\u306F\u3001\u76F4\u63A5\u5165\u529B\u3057\u3066\u304F\u3060\u3055\u3044\"></textarea>\n          </div>\n        </div>\n        <div class=\"wxo-assist-row\">\n          <label class=\"wxo-assist-label\">\u30EA\u30AF\u30A8\u30B9\u30C8\u6587</label>\n          <div class=\"wxo-assist-generated\" data-role=\"generated\">\u6761\u9805\u3092\u9078\u629E\u3059\u308B\u3068\u81EA\u52D5\u751F\u6210\u3055\u308C\u307E\u3059</div>\n        </div>\n      </div>\n      <div class=\"wxo-assist-footer\">\n        <button class=\"wxo-assist-insert\" data-role=\"insert\" disabled>\u5165\u529B\u30A8\u30EA\u30A2\u306B\u633F\u5165</button>\n      </div>\n    ";
+    this.el.innerHTML = "\n      <div class=\"wxo-assist-header\">\n        <span class=\"wxo-assist-title\">\uD83D\uDCCB \u6761\u9805\u30A2\u30B7\u30B9\u30C8</span>\n        <button class=\"wxo-assist-close\" aria-label=\"\u9589\u3058\u308B\">\xD7</button>\n      </div>\n      <div class=\"wxo-assist-body\">\n        <div class=\"wxo-assist-row\">\n          <label class=\"wxo-assist-label\">\u5951\u7D04\u66F8</label>\n          <div class=\"wxo-assist-field\">\n            <select class=\"wxo-assist-select\" data-role=\"contract\">\n              <option value=\"\">-- \u9078\u629E\u3057\u3066\u304F\u3060\u3055\u3044 --</option>\n            </select>\n          </div>\n        </div>\n        <div class=\"wxo-assist-row\">\n          <label class=\"wxo-assist-label\">\u6761</label>\n          <div class=\"wxo-assist-field\">\n            <select class=\"wxo-assist-select\" data-role=\"article\" disabled>\n              <option value=\"\">-- \u307E\u305A\u5951\u7D04\u66F8\u3092\u9078\u629E\u3057\u3066\u304F\u3060\u3055\u3044 --</option>\n            </select>\n            <div class=\"wxo-assist-preview wxo-assist-preview--empty\" data-role=\"article-preview\">\u6761\u3092\u9078\u629E\u3059\u308B\u3068\u672C\u6587\u304C\u8868\u793A\u3055\u308C\u307E\u3059</div>\n          </div>\n        </div>\n        <div class=\"wxo-assist-row\">\n          <label class=\"wxo-assist-label\">\u9805\uFF08\u4EFB\u610F\uFF09</label>\n          <div class=\"wxo-assist-field\">\n            <select class=\"wxo-assist-select\" data-role=\"clause\" disabled>\n              <option value=\"\">-- \u9805\u306A\u3057\uFF08\u6761\u5168\u4F53\uFF09 --</option>\n            </select>\n            <div class=\"wxo-assist-preview wxo-assist-preview--empty\" data-role=\"clause-preview\">\u9805\u3092\u9078\u629E\u3059\u308B\u3068\u672C\u6587\u304C\u8868\u793A\u3055\u308C\u307E\u3059</div>\n          </div>\n        </div>\n        <div class=\"wxo-assist-row\">\n          <label class=\"wxo-assist-label\">\u5909\u66F4\u5185\u5BB9</label>\n          <div class=\"wxo-assist-field\">\n            <textarea class=\"wxo-assist-change\" data-role=\"change\" rows=\"2\" placeholder=\"\u5909\u66F4\u5185\u5BB9\u3092\u5165\u529B\u3057\u3066\u304F\u3060\u3055\u3044\"></textarea>\n          </div>\n        </div>\n        <div class=\"wxo-assist-row\">\n          <label class=\"wxo-assist-label\">\u30EA\u30AF\u30A8\u30B9\u30C8\u6587</label>\n          <div class=\"wxo-assist-generated\" data-role=\"generated\">\u6761\u9805\u3092\u9078\u629E\u3059\u308B\u3068\u81EA\u52D5\u751F\u6210\u3055\u308C\u307E\u3059</div>\n        </div>\n      </div>\n      <div class=\"wxo-assist-footer\">\n        <button class=\"wxo-assist-insert\" data-role=\"insert\" disabled>\u5165\u529B\u30A8\u30EA\u30A2\u306B\u633F\u5165</button>\n      </div>\n    ";
     this._contractSel = this.el.querySelector('[data-role="contract"]');
     this._articleSel = this.el.querySelector('[data-role="article"]');
     this._clauseSel = this.el.querySelector('[data-role="clause"]');
     this._articlePreview = this.el.querySelector('[data-role="article-preview"]');
     this._clausePreview = this.el.querySelector('[data-role="clause-preview"]');
-    this._changePreset = this.el.querySelector('[data-role="change-preset"]');
     this._changeInput = this.el.querySelector('[data-role="change"]');
     this._generatedEl = this.el.querySelector('[data-role="generated"]');
     this._insertBtn = this.el.querySelector('[data-role="insert"]');
@@ -1892,13 +1891,6 @@ class ContractAssistPanel {
     this._contractSel.addEventListener('change', e => this._onContractChange(e.target.value));
     this._articleSel.addEventListener('change', e => this._onArticleChange(e.target.value));
     this._clauseSel.addEventListener('change', e => this._onClauseChange(e.target.value));
-    this._changePreset.addEventListener('change', e => {
-      if (e.target.value) {
-        this._changeInput.value = e.target.value;
-        e.target.value = '';
-        this._updateGenerated();
-      }
-    });
     this._changeInput.addEventListener('input', () => this._updateGenerated());
     this._insertBtn.addEventListener('click', () => {
       var text = this._generatedEl.textContent;
@@ -1962,10 +1954,21 @@ class ContractAssistPanel {
       var short = sel.getAttribute('data-short-text');
       if (short) sel.textContent = short;
 
-      // Populate clause select if clauses exist
+      // Populate clause select: "前文" first (if article has content), then numbered clauses
       var clauseKeys = Object.keys(article.clauses || {});
-      if (clauseKeys.length > 0) {
+      var hasPreamble = !!(article.content && article.content.trim());
+      if (hasPreamble || clauseKeys.length > 0) {
         this._clauseSel.disabled = false;
+        if (hasPreamble) {
+          var preview30 = article.content.substring(0, 30);
+          var fullText = "\u524D\u6587 ".concat(preview30, "...");
+          var opt = document.createElement('option');
+          opt.value = '__preamble__';
+          opt.textContent = fullText;
+          opt.setAttribute('data-full-text', fullText);
+          opt.setAttribute('data-short-text', '前文');
+          this._clauseSel.appendChild(opt);
+        }
         clauseKeys.forEach(num => {
           var content = article.clauses[num];
           var preview30 = content.substring(0, 30);
@@ -1987,7 +1990,8 @@ class ContractAssistPanel {
   _onClauseChange(clauseNum) {
     this._clause = clauseNum;
     if (clauseNum) {
-      var content = this.data[this._contract][this._article].clauses[clauseNum];
+      var article = this.data[this._contract][this._article];
+      var content = clauseNum === '__preamble__' ? article.content : article.clauses[clauseNum];
       this._setPreview(this._clausePreview, content);
 
       // Collapse selected option to short text
@@ -2035,7 +2039,7 @@ class ContractAssistPanel {
     }
     var article = this.data[this._contract][this._article];
     var text = "".concat(this._contract, "\uFF1A").concat(this._article, " (").concat(article.title, ")");
-    if (this._clause) text += "\u7B2C".concat(this._clause, "\u9805");
+    if (this._clause === '__preamble__') text += '前文';else if (this._clause) text += "\u7B2C".concat(this._clause, "\u9805");
     text += 'について、';
     var change = this._changeInput.value.trim();
     text += change || '変更をお願いします。';
@@ -2676,6 +2680,17 @@ class ChatWindow {
     this._setInputDisabled(false);
     if (this.sendBtn) this.sendBtn.disabled = true;
     if (this.scrollBtnEl) this.scrollBtnEl.style.display = 'none';
+    if (this.assistPanel && this.clauseAssistAutoOpen) {
+      requestAnimationFrame(() => {
+        var inputArea = this.el && this.el.querySelector('.wxo-chat-input-area');
+        if (inputArea && this.assistPanel.el) this.assistPanel.el.style.bottom = inputArea.offsetHeight + 'px';
+        requestAnimationFrame(() => {
+          this.assistPanel.show();
+          var assistBtn = this.el && this.el.querySelector('.wxo-assist-btn');
+          if (assistBtn) assistBtn.classList.add('wxo-assist-btn--active');
+        });
+      });
+    }
   }
   destroy() {
     if (this.assistPanel) this.assistPanel.destroy();
