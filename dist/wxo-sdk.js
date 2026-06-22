@@ -1774,6 +1774,11 @@
       this._clauseSel.disabled = true;
       this._setPreview(this._clausePreview, null);
       if (contractName) {
+        // Hard-coded 前文 option at the top
+        const preambleOpt = document.createElement('option');
+        preambleOpt.value = '__preamble__';
+        preambleOpt.textContent = '前文';
+        this._articleSel.appendChild(preambleOpt);
         const contract = this.data[contractName];
         Object.keys(contract).forEach(articleNum => {
           const article = contract[articleNum];
@@ -1798,7 +1803,9 @@
       this._clauseSel.innerHTML = '<option value="">-- 項なし（条全体） --</option>';
       this._clauseSel.disabled = true;
       this._setPreview(this._clausePreview, null);
-      if (articleNum) {
+      if (articleNum === '__preamble__') {
+        this._setPreview(this._articlePreview, null);
+      } else if (articleNum) {
         const article = this.data[this._contract][articleNum];
         this._setPreview(this._articlePreview, article.content);
 
@@ -1807,21 +1814,10 @@
         const short = sel.getAttribute('data-short-text');
         if (short) sel.textContent = short;
 
-        // Populate clause select: "前文" first (if article has content), then numbered clauses
+        // Populate clause select if clauses exist
         const clauseKeys = Object.keys(article.clauses || {});
-        const hasPreamble = !!(article.content && article.content.trim());
-        if (hasPreamble || clauseKeys.length > 0) {
+        if (clauseKeys.length > 0) {
           this._clauseSel.disabled = false;
-          if (hasPreamble) {
-            const preview30 = article.content.substring(0, 30);
-            const fullText = `前文 ${preview30}...`;
-            const opt = document.createElement('option');
-            opt.value = '__preamble__';
-            opt.textContent = fullText;
-            opt.setAttribute('data-full-text', fullText);
-            opt.setAttribute('data-short-text', '前文');
-            this._clauseSel.appendChild(opt);
-          }
           clauseKeys.forEach(num => {
             const content = article.clauses[num];
             const preview30 = content.substring(0, 30);
@@ -1844,7 +1840,7 @@
       this._clause = clauseNum;
       if (clauseNum) {
         const article = this.data[this._contract][this._article];
-        const content = clauseNum === '__preamble__' ? article.content : article.clauses[clauseNum];
+        const content = article.clauses[clauseNum];
         this._setPreview(this._clausePreview, content);
 
         // Collapse selected option to short text
@@ -1890,9 +1886,14 @@
         this._insertBtn.disabled = true;
         return;
       }
-      const article = this.data[this._contract][this._article];
-      let text = `${this._contract}：${this._article} (${article.title})`;
-      if (this._clause === '__preamble__') text += '前文';else if (this._clause) text += `第${this._clause}項`;
+      let text = `${this._contract}：`;
+      if (this._article === '__preamble__') {
+        text += '前文';
+      } else {
+        const article = this.data[this._contract][this._article];
+        text += `${this._article} (${article.title})`;
+        if (this._clause) text += `第${this._clause}項`;
+      }
       text += 'について、';
       const change = this._changeInput.value.trim();
       if (change) text += change;

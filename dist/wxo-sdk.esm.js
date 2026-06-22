@@ -1921,6 +1921,11 @@ class ContractAssistPanel {
     this._clauseSel.disabled = true;
     this._setPreview(this._clausePreview, null);
     if (contractName) {
+      // Hard-coded 前文 option at the top
+      var preambleOpt = document.createElement('option');
+      preambleOpt.value = '__preamble__';
+      preambleOpt.textContent = '前文';
+      this._articleSel.appendChild(preambleOpt);
       var contract = this.data[contractName];
       Object.keys(contract).forEach(articleNum => {
         var article = contract[articleNum];
@@ -1945,7 +1950,9 @@ class ContractAssistPanel {
     this._clauseSel.innerHTML = '<option value="">-- 項なし（条全体） --</option>';
     this._clauseSel.disabled = true;
     this._setPreview(this._clausePreview, null);
-    if (articleNum) {
+    if (articleNum === '__preamble__') {
+      this._setPreview(this._articlePreview, null);
+    } else if (articleNum) {
       var article = this.data[this._contract][articleNum];
       this._setPreview(this._articlePreview, article.content);
 
@@ -1954,21 +1961,10 @@ class ContractAssistPanel {
       var short = sel.getAttribute('data-short-text');
       if (short) sel.textContent = short;
 
-      // Populate clause select: "前文" first (if article has content), then numbered clauses
+      // Populate clause select if clauses exist
       var clauseKeys = Object.keys(article.clauses || {});
-      var hasPreamble = !!(article.content && article.content.trim());
-      if (hasPreamble || clauseKeys.length > 0) {
+      if (clauseKeys.length > 0) {
         this._clauseSel.disabled = false;
-        if (hasPreamble) {
-          var preview30 = article.content.substring(0, 30);
-          var fullText = "\u524D\u6587 ".concat(preview30, "...");
-          var opt = document.createElement('option');
-          opt.value = '__preamble__';
-          opt.textContent = fullText;
-          opt.setAttribute('data-full-text', fullText);
-          opt.setAttribute('data-short-text', '前文');
-          this._clauseSel.appendChild(opt);
-        }
         clauseKeys.forEach(num => {
           var content = article.clauses[num];
           var preview30 = content.substring(0, 30);
@@ -1991,7 +1987,7 @@ class ContractAssistPanel {
     this._clause = clauseNum;
     if (clauseNum) {
       var article = this.data[this._contract][this._article];
-      var content = clauseNum === '__preamble__' ? article.content : article.clauses[clauseNum];
+      var content = article.clauses[clauseNum];
       this._setPreview(this._clausePreview, content);
 
       // Collapse selected option to short text
@@ -2037,9 +2033,14 @@ class ContractAssistPanel {
       this._insertBtn.disabled = true;
       return;
     }
-    var article = this.data[this._contract][this._article];
-    var text = "".concat(this._contract, "\uFF1A").concat(this._article, " (").concat(article.title, ")");
-    if (this._clause === '__preamble__') text += '前文';else if (this._clause) text += "\u7B2C".concat(this._clause, "\u9805");
+    var text = "".concat(this._contract, "\uFF1A");
+    if (this._article === '__preamble__') {
+      text += '前文';
+    } else {
+      var article = this.data[this._contract][this._article];
+      text += "".concat(this._article, " (").concat(article.title, ")");
+      if (this._clause) text += "\u7B2C".concat(this._clause, "\u9805");
+    }
     text += 'について、';
     var change = this._changeInput.value.trim();
     if (change) text += change;
