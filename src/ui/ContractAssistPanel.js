@@ -177,6 +177,7 @@ class ContractAssistPanel {
 
       const contract = this.data[contractName];
       Object.keys(contract).forEach(articleNum => {
+        if (articleNum === '前文') return; // rendered as __preamble__ above
         const article = contract[articleNum];
         const preview30 = article.content.substring(0, 30);
         const fullText = preview30
@@ -205,7 +206,8 @@ class ContractAssistPanel {
     this._setPreview(this._clausePreview, null);
 
     if (articleNum === '__preamble__') {
-      this._setPreview(this._articlePreview, null);
+      const preamble = this.data[this._contract]['前文'];
+      this._setPreview(this._articlePreview, preamble ? preamble.content : null);
     } else if (articleNum) {
       const article = this.data[this._contract][articleNum];
       this._setPreview(this._articlePreview, article.content);

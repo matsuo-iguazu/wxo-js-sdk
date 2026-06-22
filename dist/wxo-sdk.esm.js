@@ -1928,6 +1928,7 @@ class ContractAssistPanel {
       this._articleSel.appendChild(preambleOpt);
       var contract = this.data[contractName];
       Object.keys(contract).forEach(articleNum => {
+        if (articleNum === '前文') return; // rendered as __preamble__ above
         var article = contract[articleNum];
         var preview30 = article.content.substring(0, 30);
         var fullText = preview30 ? "".concat(articleNum, " (").concat(article.title, ") ").concat(preview30, "...") : "".concat(articleNum, " (").concat(article.title, ")");
@@ -1951,7 +1952,8 @@ class ContractAssistPanel {
     this._clauseSel.disabled = true;
     this._setPreview(this._clausePreview, null);
     if (articleNum === '__preamble__') {
-      this._setPreview(this._articlePreview, null);
+      var preamble = this.data[this._contract]['前文'];
+      this._setPreview(this._articlePreview, preamble ? preamble.content : null);
     } else if (articleNum) {
       var article = this.data[this._contract][articleNum];
       this._setPreview(this._articlePreview, article.content);
