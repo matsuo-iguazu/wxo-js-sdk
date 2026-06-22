@@ -1895,7 +1895,7 @@
       if (this._clause === '__preamble__') text += '前文';else if (this._clause) text += `第${this._clause}項`;
       text += 'について、';
       const change = this._changeInput.value.trim();
-      text += change || '変更をお願いします。';
+      if (change) text += change;
       this._generatedEl.textContent = text;
       this._insertBtn.disabled = false;
     }

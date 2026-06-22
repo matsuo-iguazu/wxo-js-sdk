@@ -2042,7 +2042,7 @@ class ContractAssistPanel {
     if (this._clause === '__preamble__') text += '前文';else if (this._clause) text += "\u7B2C".concat(this._clause, "\u9805");
     text += 'について、';
     var change = this._changeInput.value.trim();
-    text += change || '変更をお願いします。';
+    if (change) text += change;
     this._generatedEl.textContent = text;
     this._insertBtn.disabled = false;
   }

@@ -310,7 +310,7 @@ class ContractAssistPanel {
     text += 'について、';
 
     const change = this._changeInput.value.trim();
-    text += change || '変更をお願いします。';
+    if (change) text += change;
 
     this._generatedEl.textContent = text;
     this._insertBtn.disabled = false;
