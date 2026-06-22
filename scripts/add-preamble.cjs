@@ -58,7 +58,8 @@ async function extractPreamble(docxPath) {
     }
 
     // Prepend 前文 as first key (overwrite if already exists)
-    const updated = { '前文': { title: '前文', content: preamble, clauses: {} }, ...contract };
+    const { '前文': _old, ...rest } = contract;
+    const updated = { '前文': { title: '前文', content: preamble, clauses: {} }, ...rest };
     jsons[jsonFile][contractKey] = updated;
     console.log(`  → added 前文 to ${contractKey}`);
   }
