@@ -694,7 +694,7 @@ class ChatWindow {
       this.inputEl.value = '';
       this._resizeInput();
     }
-    if (this.assistPanel) this.assistPanel.hide();
+    if (this.assistPanel) { this.assistPanel.hide(); this.assistPanel.reset(); }
     this._renderWelcomeScreen();
     this._setInputDisabled(false);
     if (this.sendBtn) this.sendBtn.disabled = true;

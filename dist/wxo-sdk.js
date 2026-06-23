@@ -1718,6 +1718,22 @@
     get isVisible() {
       return this._visible;
     }
+    reset() {
+      if (!this.el) return;
+      this._contract = '';
+      this._article = '';
+      this._clause = '';
+      this._contractSel.value = '';
+      this._articleSel.innerHTML = '<option value="">-- まず契約書を選択してください --</option>';
+      this._articleSel.disabled = true;
+      this._clauseSel.innerHTML = '<option value="">-- 項なし（条全体） --</option>';
+      this._clauseSel.disabled = true;
+      this._setPreview(this._articlePreview, null);
+      this._setPreview(this._clausePreview, null);
+      this._changeInput.value = '';
+      this._generatedEl.textContent = '条項を選択すると自動生成されます';
+      this._insertBtn.disabled = true;
+    }
     destroy() {
       if (this.el && this.el.parentNode) {
         this.el.parentNode.removeChild(this.el);
@@ -2569,7 +2585,10 @@
         this.inputEl.value = '';
         this._resizeInput();
       }
-      if (this.assistPanel) this.assistPanel.hide();
+      if (this.assistPanel) {
+        this.assistPanel.hide();
+        this.assistPanel.reset();
+      }
       this._renderWelcomeScreen();
       this._setInputDisabled(false);
       if (this.sendBtn) this.sendBtn.disabled = true;
