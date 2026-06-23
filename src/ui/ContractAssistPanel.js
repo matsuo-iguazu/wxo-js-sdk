@@ -121,6 +121,8 @@ class ContractAssistPanel {
     this._changeInput.value = '';
     this._generatedEl.textContent = '条項を選択すると自動生成されます';
     this._insertBtn.disabled = true;
+    const body = this.el.querySelector('.wxo-assist-body');
+    if (body) body.scrollTop = 0;
   }
 
   destroy() {
