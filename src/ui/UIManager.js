@@ -135,9 +135,11 @@ class UIManager {
     const chatWindow = new ChatWindow({
       agent,
       starterSettings: null,
-      messages: this.client.getMessages(),
+      messages: [],
       feedbackEnabled,
       feedbackOptions,
+      clauseAssistData: agent.clauseAssistData || null,
+      clauseAssistAutoOpen: agent.clauseAssistAutoOpen !== false,
       escalationWebhookUrl: this.config.getEscalationWebhookUrl(),
       escalationTriggerPhrases: this.config.getEscalationTriggerPhrases(),
       userInfo: this.config.getFeedbackUserInfo(),
@@ -865,6 +867,210 @@ class UIManager {
         border-top-color: transparent;
         border-bottom-color: #161616;
       }
+
+      /* Clause assist button (📋) in input wrap */
+      .wxo-assist-btn {
+        position: absolute;
+        right: 46px;
+        bottom: 13px;
+        width: 26px;
+        height: 26px;
+        background: none;
+        border: none;
+        border-radius: 50%;
+        font-size: 15px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #525252;
+        transition: background 0.15s, color 0.15s;
+        line-height: 1;
+        padding: 0;
+      }
+      .wxo-assist-btn:hover { background: #f4f4f4; }
+      .wxo-assist-btn--active { color: ${primaryColor}; background: #e8f4ff; }
+
+      /* Wider right padding when assist button is present */
+      .wxo-input-wrap--with-assist .wxo-chat-input { padding-right: 80px; }
+
+      /* Clause assist panel (absolute overlay inside .wxo-chat-window) */
+      .wxo-assist-panel {
+        position: absolute;
+        top: 48px;
+        bottom: 53px;
+        left: 0;
+        right: 0;
+        background: #e8f4ff;
+        border-top: 1px solid ${primaryColor};
+        box-shadow: 0 -2px 8px rgba(0,0,0,0.1);
+        display: grid;
+        grid-template-rows: auto 1fr auto;
+        grid-template-columns: 100%;
+        min-height: 0;
+        overflow: hidden;
+        transform: translateY(100%);
+        opacity: 0;
+        pointer-events: none;
+        transition: transform 0.25s ease-out, opacity 0.25s ease-out;
+        z-index: 20;
+      }
+      .wxo-assist-panel--visible {
+        transform: translateY(0);
+        opacity: 1;
+        pointer-events: all;
+      }
+      .wxo-assist-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 12px 16px 10px;
+        border-bottom: 1px solid #c6d9ee;
+        flex-shrink: 0;
+      }
+      .wxo-assist-title {
+        font-size: 13px;
+        font-weight: 600;
+        color: #161616;
+      }
+      .wxo-assist-close {
+        background: transparent;
+        border: none;
+        color: #525252;
+        font-size: 20px;
+        line-height: 1;
+        cursor: pointer;
+        padding: 2px 6px;
+        border-radius: 4px;
+      }
+      .wxo-assist-close:hover { background: #d0e8f8; color: #161616; }
+      .wxo-assist-body {
+        min-height: 0;
+        overflow-y: auto;
+        padding: 12px 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .wxo-assist-row {
+        display: flex;
+        gap: 12px;
+        align-items: flex-start;
+      }
+      .wxo-assist-label {
+        font-size: 12px;
+        font-weight: 600;
+        color: #525252;
+        min-width: 72px;
+        flex-shrink: 0;
+        padding-top: 8px;
+      }
+      .wxo-assist-field {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .wxo-assist-select {
+        width: 100%;
+        padding: 6px 28px 6px 10px;
+        border: 1px solid #c6c6c6;
+        border-radius: 4px;
+        font-size: 13px;
+        font-family: inherit;
+        background: white url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23525252' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E") no-repeat right 8px center;
+        -webkit-appearance: none;
+        -moz-appearance: none;
+        appearance: none;
+        box-sizing: border-box;
+      }
+      .wxo-assist-select:focus {
+        outline: none;
+        border-color: ${primaryColor};
+        box-shadow: 0 0 0 1px ${primaryColor};
+      }
+      .wxo-assist-select:disabled { background: #f4f4f4; color: #8d8d8d; }
+      .wxo-assist-preview {
+        background: #f4f4f4;
+        border: 1px solid #e0e0e0;
+        border-radius: 4px;
+        padding: 8px 10px;
+        font-size: 12px;
+        color: #161616;
+        line-height: 1.5;
+        min-height: 40px;
+      }
+      .wxo-assist-preview--empty { color: #8d8d8d; font-style: italic; }
+      .wxo-assist-preview-text {
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 3;
+        overflow: hidden;
+      }
+      .wxo-assist-preview-text--expanded {
+        display: block;
+        overflow: visible;
+      }
+      .wxo-assist-preview-toggle {
+        background: none;
+        border: none;
+        color: ${primaryColor};
+        font-size: 11px;
+        font-family: inherit;
+        cursor: pointer;
+        padding: 3px 0;
+        display: block;
+        width: fit-content;
+        margin-left: auto;
+        margin-top: 6px;
+      }
+      .wxo-assist-change {
+        width: 100%;
+        padding: 6px 10px;
+        border: 1px solid #c6c6c6;
+        border-radius: 4px;
+        font-size: 13px;
+        font-family: inherit;
+        resize: none;
+        box-sizing: border-box;
+      }
+      .wxo-assist-change:focus {
+        outline: none;
+        border-color: ${primaryColor};
+        box-shadow: 0 0 0 1px ${primaryColor};
+      }
+      .wxo-assist-generated {
+        background: #f4f4f4;
+        border: 1px solid #e0e0e0;
+        border-radius: 4px;
+        padding: 8px 10px;
+        font-size: 13px;
+        color: #161616;
+        line-height: 1.5;
+        min-height: 40px;
+      }
+      .wxo-assist-footer {
+        padding: 10px 16px 12px;
+        border-top: 1px solid #c6d9ee;
+        flex-shrink: 0;
+      }
+      .wxo-assist-insert {
+        width: 100%;
+        padding: 10px;
+        height: auto;
+        line-height: 1.4;
+        box-sizing: border-box;
+        background: ${primaryColor};
+        color: white;
+        border: none;
+        border-radius: 4px;
+        font-size: 13px;
+        font-family: inherit;
+        cursor: pointer;
+        transition: background 0.15s;
+      }
+      .wxo-assist-insert:hover:not(:disabled) { background: #0353e9; }
+      .wxo-assist-insert:disabled { background: #c6c6c6; cursor: not-allowed; }
     `;
 
     document.head.appendChild(style);

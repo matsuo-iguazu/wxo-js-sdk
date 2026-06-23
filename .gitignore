@@ -11,6 +11,10 @@ build/
 examples/basic-example.html
 examples/garoon-embed-test.js
 examples/garoon-embed-test-*.js
+examples/aws/contract-assist-test.html
+
+# Real contract documents (confidential)
+data/contracts/
 
 # Test coverage
 coverage/

@@ -125,9 +125,19 @@ class Config {
       defaultLocale: null,
       // Locale for welcome message / starter prompts (e.g. 'ja', 'en'). Falls back to browser language.
       feedbackWebhookUrl: null,
-      // POST destination for feedback data (optional)
+      // POST destination for feedback data (optional, legacy Code Engine)
+      supabaseUrl: null,
+      // Supabase project URL (e.g. 'https://xxxx.supabase.co')
+      supabaseAnonKey: null,
+      // Supabase anon key
+      supabaseTable: 'wxo_log',
+      // Supabase table name for feedback
       feedbackUserInfo: null,
       // User info object to spread into feedback payload (optional)
+      escalationWebhookUrl: null,
+      // Teams Incoming Webhook URL for legal team notifications (optional)
+      escalationTriggerPhrases: [],
+      // Phrases in agent response that show the "notify" button (e.g. ['法務担当に質問してください'])
       feedbackOptions: {
         positive: {
           showDetails: true,
@@ -294,12 +304,26 @@ class Config {
   }
 
   /**
+   * Get Supabase config for feedback storage
+   * @returns {{url, anonKey, table}|null}
+   */
+  getSupabaseConfig() {
+    var _this$config4, _this$config5;
+    if (!((_this$config4 = this.config) !== null && _this$config4 !== void 0 && _this$config4.supabaseUrl) || !((_this$config5 = this.config) !== null && _this$config5 !== void 0 && _this$config5.supabaseAnonKey)) return null;
+    return {
+      url: this.config.supabaseUrl,
+      anonKey: this.config.supabaseAnonKey,
+      table: this.config.supabaseTable || 'wxo_log'
+    };
+  }
+
+  /**
    * Get feedback user info (spread into payload)
    * @returns {Object|null}
    */
   getFeedbackUserInfo() {
-    var _this$config4;
-    return ((_this$config4 = this.config) === null || _this$config4 === void 0 ? void 0 : _this$config4.feedbackUserInfo) || null;
+    var _this$config6;
+    return ((_this$config6 = this.config) === null || _this$config6 === void 0 ? void 0 : _this$config6.feedbackUserInfo) || null;
   }
 
   /**
@@ -307,8 +331,16 @@ class Config {
    * @returns {Object}
    */
   getFeedbackOptions() {
-    var _this$config5;
-    return ((_this$config5 = this.config) === null || _this$config5 === void 0 ? void 0 : _this$config5.feedbackOptions) || null;
+    var _this$config7;
+    return ((_this$config7 = this.config) === null || _this$config7 === void 0 ? void 0 : _this$config7.feedbackOptions) || null;
+  }
+  getEscalationWebhookUrl() {
+    var _this$config8;
+    return ((_this$config8 = this.config) === null || _this$config8 === void 0 ? void 0 : _this$config8.escalationWebhookUrl) || null;
+  }
+  getEscalationTriggerPhrases() {
+    var _this$config9;
+    return ((_this$config9 = this.config) === null || _this$config9 === void 0 ? void 0 : _this$config9.escalationTriggerPhrases) || [];
   }
 
   /**
@@ -317,8 +349,8 @@ class Config {
    * @returns {string|null}
    */
   getLocale() {
-    var _this$config6;
-    return ((_this$config6 = this.config) === null || _this$config6 === void 0 ? void 0 : _this$config6.defaultLocale) || (typeof navigator !== 'undefined' ? navigator.language : null) || null;
+    var _this$config0;
+    return ((_this$config0 = this.config) === null || _this$config0 === void 0 ? void 0 : _this$config0.defaultLocale) || (typeof navigator !== 'undefined' ? navigator.language : null) || null;
   }
 
   /**
@@ -326,8 +358,8 @@ class Config {
    * @returns {boolean} True if debug mode is enabled
    */
   isDebug() {
-    var _this$config7;
-    return ((_this$config7 = this.config) === null || _this$config7 === void 0 ? void 0 : _this$config7.debug) === true;
+    var _this$config1;
+    return ((_this$config1 = this.config) === null || _this$config1 === void 0 ? void 0 : _this$config1.debug) === true;
   }
 }
 
@@ -799,12 +831,11 @@ class ChatManager {
                     return c.response_type === 'text' && !((_c$text = c.text) !== null && _c$text !== void 0 && _c$text.toLowerCase().includes('new flow has started'));
                   }));
                 });
-                var lastMsg = agentMessages.at(-1);
-                if (lastMsg !== null && lastMsg !== void 0 && lastMsg.content) {
-                  finalText = lastMsg.content.filter(c => {
+                if (agentMessages.length > 0) {
+                  finalText = agentMessages.map(m => m.content.filter(c => {
                     var _c$text2;
                     return c.response_type === 'text' && !((_c$text2 = c.text) !== null && _c$text2 !== void 0 && _c$text2.toLowerCase().includes('new flow has started'));
-                  }).map(c => c.text || '').join('');
+                  }).map(c => c.text || '').join('')).join('\n\n');
                 }
               } catch (e) {
                 if (_this6.config.isDebug()) {
@@ -1040,7 +1071,6 @@ class ChatManager {
     return _asyncToGenerator(function* () {
       var categories = _arguments3.length > 2 && _arguments3[2] !== undefined ? _arguments3[2] : [];
       var text = _arguments3.length > 3 && _arguments3[3] !== undefined ? _arguments3[3] : '';
-      var webhookUrl = _this8.config.getFeedbackWebhookUrl();
       var session = _this8.sessions.get(_this8.currentAgentId);
       var agentConfig = _this8.config.getAgent(_this8.currentAgentId);
       var feedbackUserInfo = _this8.config.getFeedbackUserInfo() || {};
@@ -1051,13 +1081,44 @@ class ChatManager {
       var precedingMsg = agentMsgIndex > 0 ? messages[agentMsgIndex - 1] : null;
       var question = (precedingMsg === null || precedingMsg === void 0 ? void 0 : precedingMsg.sender) === 'user' ? precedingMsg.text : (session === null || session === void 0 ? void 0 : session.lastUserMessage) || '';
       var answer = agentMsgIndex >= 0 ? messages[agentMsgIndex].text || '' : '';
+      var categoriesStr = Array.isArray(categories) ? categories.join(', ') : '';
+      var agentId = (agentConfig === null || agentConfig === void 0 ? void 0 : agentConfig.agentId) || _this8.currentAgentId;
+      var supabase = _this8.config.getSupabaseConfig();
+      if (supabase) {
+        var row = {
+          garoonId: String(feedbackUserInfo.id || feedbackUserInfo.loginName || ''),
+          name: feedbackUserInfo.displayName || feedbackUserInfo.name || '',
+          question,
+          answer,
+          isPositive: isPositive ? '1' : '0',
+          categories: categoriesStr,
+          text,
+          agentId
+        };
+        if (_this8.config.isDebug()) {
+          console.log('[wxo-sdk] Supabase feedback row:', row);
+        }
+        yield fetch("".concat(supabase.url, "/rest/v1/").concat(supabase.table), {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': supabase.anonKey,
+            'Authorization': "Bearer ".concat(supabase.anonKey)
+          },
+          body: JSON.stringify(row)
+        });
+        return;
+      }
+
+      // Legacy: Code Engine webhook
+      var webhookUrl = _this8.config.getFeedbackWebhookUrl();
       var payload = _objectSpread2(_objectSpread2({}, feedbackUserInfo), {}, {
         question,
         answer,
         isPositive: isPositive ? 1 : 0,
-        categories: Array.isArray(categories) ? categories.join(', ') : '',
+        categories: categoriesStr,
         text,
-        agentId: (agentConfig === null || agentConfig === void 0 ? void 0 : agentConfig.agentId) || _this8.currentAgentId
+        agentId
       });
       if (_this8.config.isDebug()) {
         console.log('[wxo-sdk] Feedback payload:', payload);
@@ -1762,6 +1823,249 @@ class AgentSelector {
 // Made with Bob
 
 /**
+ * ContractAssistPanel - clause assist side panel for the chat window
+ *
+ * Accepts clauseAssistData: { "<契約書名>": { "<第N条>": { title, content, clauses: { "1": "..." } } } }
+ * Calls onInsert(text) when user clicks "入力エリアに挿入".
+ */
+class ContractAssistPanel {
+  constructor(_ref) {
+    var {
+      clauseAssistData,
+      onInsert
+    } = _ref;
+    this.data = clauseAssistData;
+    this.onInsert = onInsert;
+    this.el = null;
+    this._visible = false;
+
+    // Selected state
+    this._contract = '';
+    this._article = '';
+    this._clause = '';
+  }
+  render(container) {
+    this.el = document.createElement('div');
+    this.el.className = 'wxo-assist-panel';
+    this.el.innerHTML = "\n      <div class=\"wxo-assist-header\">\n        <span class=\"wxo-assist-title\">\uD83D\uDCCB \u6761\u9805\u30A2\u30B7\u30B9\u30C8</span>\n        <button class=\"wxo-assist-close\" aria-label=\"\u9589\u3058\u308B\">\xD7</button>\n      </div>\n      <div class=\"wxo-assist-body\">\n        <div class=\"wxo-assist-row\">\n          <label class=\"wxo-assist-label\">\u5951\u7D04\u66F8</label>\n          <div class=\"wxo-assist-field\">\n            <select class=\"wxo-assist-select\" data-role=\"contract\">\n              <option value=\"\">-- \u9078\u629E\u3057\u3066\u304F\u3060\u3055\u3044 --</option>\n            </select>\n          </div>\n        </div>\n        <div class=\"wxo-assist-row\">\n          <label class=\"wxo-assist-label\">\u6761</label>\n          <div class=\"wxo-assist-field\">\n            <select class=\"wxo-assist-select\" data-role=\"article\" disabled>\n              <option value=\"\">-- \u307E\u305A\u5951\u7D04\u66F8\u3092\u9078\u629E\u3057\u3066\u304F\u3060\u3055\u3044 --</option>\n            </select>\n            <div class=\"wxo-assist-preview wxo-assist-preview--empty\" data-role=\"article-preview\">\u6761\u3092\u9078\u629E\u3059\u308B\u3068\u672C\u6587\u304C\u8868\u793A\u3055\u308C\u307E\u3059</div>\n          </div>\n        </div>\n        <div class=\"wxo-assist-row\">\n          <label class=\"wxo-assist-label\">\u9805\uFF08\u4EFB\u610F\uFF09</label>\n          <div class=\"wxo-assist-field\">\n            <select class=\"wxo-assist-select\" data-role=\"clause\" disabled>\n              <option value=\"\">-- \u9805\u306A\u3057\uFF08\u6761\u5168\u4F53\uFF09 --</option>\n            </select>\n            <div class=\"wxo-assist-preview wxo-assist-preview--empty\" data-role=\"clause-preview\">\u9805\u3092\u9078\u629E\u3059\u308B\u3068\u672C\u6587\u304C\u8868\u793A\u3055\u308C\u307E\u3059</div>\n          </div>\n        </div>\n        <div class=\"wxo-assist-row\">\n          <label class=\"wxo-assist-label\">\u5909\u66F4\u5185\u5BB9</label>\n          <div class=\"wxo-assist-field\">\n            <textarea class=\"wxo-assist-change\" data-role=\"change\" rows=\"2\" placeholder=\"\u5909\u66F4\u5185\u5BB9\u3092\u5165\u529B\u3057\u3066\u304F\u3060\u3055\u3044\"></textarea>\n          </div>\n        </div>\n        <div class=\"wxo-assist-row\">\n          <label class=\"wxo-assist-label\">\u30EA\u30AF\u30A8\u30B9\u30C8\u6587</label>\n          <div class=\"wxo-assist-generated\" data-role=\"generated\">\u6761\u9805\u3092\u9078\u629E\u3059\u308B\u3068\u81EA\u52D5\u751F\u6210\u3055\u308C\u307E\u3059</div>\n        </div>\n      </div>\n      <div class=\"wxo-assist-footer\">\n        <button class=\"wxo-assist-insert\" data-role=\"insert\" disabled>\u5165\u529B\u30A8\u30EA\u30A2\u306B\u633F\u5165</button>\n      </div>\n    ";
+    this._contractSel = this.el.querySelector('[data-role="contract"]');
+    this._articleSel = this.el.querySelector('[data-role="article"]');
+    this._clauseSel = this.el.querySelector('[data-role="clause"]');
+    this._articlePreview = this.el.querySelector('[data-role="article-preview"]');
+    this._clausePreview = this.el.querySelector('[data-role="clause-preview"]');
+    this._changeInput = this.el.querySelector('[data-role="change"]');
+    this._generatedEl = this.el.querySelector('[data-role="generated"]');
+    this._insertBtn = this.el.querySelector('[data-role="insert"]');
+    this._initContractOptions();
+    this._wireEvents();
+    container.appendChild(this.el);
+  }
+  show() {
+    if (!this.el) return;
+    this.el.classList.add('wxo-assist-panel--visible');
+    this._visible = true;
+    this.el.scrollTop = 0;
+  }
+  hide() {
+    if (!this.el) return;
+    this.el.classList.remove('wxo-assist-panel--visible');
+    this._visible = false;
+  }
+  toggle() {
+    if (this._visible) this.hide();else this.show();
+  }
+  get isVisible() {
+    return this._visible;
+  }
+  destroy() {
+    if (this.el && this.el.parentNode) {
+      this.el.parentNode.removeChild(this.el);
+    }
+    this.el = null;
+  }
+
+  // ─── Private ───────────────────────────────────────────────────────────────
+
+  _initContractOptions() {
+    Object.keys(this.data).forEach(name => {
+      var opt = document.createElement('option');
+      opt.value = name;
+      opt.textContent = name;
+      this._contractSel.appendChild(opt);
+    });
+  }
+  _wireEvents() {
+    this.el.querySelector('.wxo-assist-close').addEventListener('click', () => this.hide());
+
+    // Restore full text when opening dropdowns (so preview text is visible while choosing)
+    this._articleSel.addEventListener('mousedown', () => this._restoreFullText(this._articleSel));
+    this._clauseSel.addEventListener('mousedown', () => this._restoreFullText(this._clauseSel));
+    this._contractSel.addEventListener('change', e => this._onContractChange(e.target.value));
+    this._articleSel.addEventListener('change', e => this._onArticleChange(e.target.value));
+    this._clauseSel.addEventListener('change', e => this._onClauseChange(e.target.value));
+    this._changeInput.addEventListener('input', () => this._updateGenerated());
+    this._insertBtn.addEventListener('click', () => {
+      var text = this._generatedEl.textContent;
+      if (text && !this._insertBtn.disabled) {
+        this.onInsert(text);
+        this.hide();
+      }
+    });
+  }
+  _restoreFullText(selectEl) {
+    Array.from(selectEl.options).forEach(opt => {
+      var full = opt.getAttribute('data-full-text');
+      if (full) opt.textContent = full;
+    });
+  }
+  _onContractChange(contractName) {
+    this._contract = contractName;
+    this._article = '';
+    this._clause = '';
+
+    // Reset article
+    this._articleSel.innerHTML = '<option value="">-- 選択してください --</option>';
+    this._articleSel.disabled = !contractName;
+    this._setPreview(this._articlePreview, null);
+
+    // Reset clause
+    this._clauseSel.innerHTML = '<option value="">-- 項なし（条全体） --</option>';
+    this._clauseSel.disabled = true;
+    this._setPreview(this._clausePreview, null);
+    if (contractName) {
+      // Hard-coded 前文 option at the top
+      var preambleOpt = document.createElement('option');
+      preambleOpt.value = '__preamble__';
+      preambleOpt.textContent = '前文';
+      this._articleSel.appendChild(preambleOpt);
+      var contract = this.data[contractName];
+      Object.keys(contract).forEach(articleNum => {
+        if (articleNum === '前文') return; // rendered as __preamble__ above
+        var article = contract[articleNum];
+        var preview30 = article.content.substring(0, 30);
+        var fullText = preview30 ? "".concat(articleNum, " (").concat(article.title, ") ").concat(preview30, "...") : "".concat(articleNum, " (").concat(article.title, ")");
+        var shortText = "".concat(articleNum, " (").concat(article.title, ")");
+        var opt = document.createElement('option');
+        opt.value = articleNum;
+        opt.textContent = fullText;
+        opt.setAttribute('data-full-text', fullText);
+        opt.setAttribute('data-short-text', shortText);
+        this._articleSel.appendChild(opt);
+      });
+    }
+    this._updateGenerated();
+  }
+  _onArticleChange(articleNum) {
+    this._article = articleNum;
+    this._clause = '';
+
+    // Reset clause
+    this._clauseSel.innerHTML = '<option value="">-- 項なし（条全体） --</option>';
+    this._clauseSel.disabled = true;
+    this._setPreview(this._clausePreview, null);
+    if (articleNum === '__preamble__') {
+      var preamble = this.data[this._contract]['前文'];
+      this._setPreview(this._articlePreview, preamble ? preamble.content : null);
+    } else if (articleNum) {
+      var article = this.data[this._contract][articleNum];
+      this._setPreview(this._articlePreview, article.content);
+
+      // Collapse selected option to short text
+      var sel = this._articleSel.options[this._articleSel.selectedIndex];
+      var short = sel.getAttribute('data-short-text');
+      if (short) sel.textContent = short;
+
+      // Populate clause select if clauses exist
+      var clauseKeys = Object.keys(article.clauses || {});
+      if (clauseKeys.length > 0) {
+        this._clauseSel.disabled = false;
+        clauseKeys.forEach(num => {
+          var content = article.clauses[num];
+          var preview30 = content.substring(0, 30);
+          var fullText = "\u7B2C".concat(num, "\u9805 ").concat(preview30, "...");
+          var shortText = "\u7B2C".concat(num, "\u9805");
+          var opt = document.createElement('option');
+          opt.value = num;
+          opt.textContent = fullText;
+          opt.setAttribute('data-full-text', fullText);
+          opt.setAttribute('data-short-text', shortText);
+          this._clauseSel.appendChild(opt);
+        });
+      }
+    } else {
+      this._setPreview(this._articlePreview, null);
+    }
+    this._updateGenerated();
+  }
+  _onClauseChange(clauseNum) {
+    this._clause = clauseNum;
+    if (clauseNum) {
+      var article = this.data[this._contract][this._article];
+      var content = article.clauses[clauseNum];
+      this._setPreview(this._clausePreview, content);
+
+      // Collapse selected option to short text
+      var sel = this._clauseSel.options[this._clauseSel.selectedIndex];
+      var short = sel.getAttribute('data-short-text');
+      if (short) sel.textContent = short;
+    } else {
+      this._setPreview(this._clausePreview, null);
+    }
+    this._updateGenerated();
+  }
+  _setPreview(el, text) {
+    el.innerHTML = '';
+    if (text) {
+      el.classList.remove('wxo-assist-preview--empty');
+      var textEl = document.createElement('div');
+      textEl.className = 'wxo-assist-preview-text';
+      textEl.textContent = text;
+      el.appendChild(textEl);
+      var toggleEl = document.createElement('button');
+      toggleEl.className = 'wxo-assist-preview-toggle';
+      toggleEl.textContent = 'さらに表示 ∨';
+      el.appendChild(toggleEl);
+      requestAnimationFrame(() => {
+        if (textEl.scrollHeight <= textEl.clientHeight + 2) {
+          toggleEl.style.display = 'none';
+        }
+      });
+      var expanded = false;
+      toggleEl.addEventListener('click', () => {
+        expanded = !expanded;
+        textEl.classList.toggle('wxo-assist-preview-text--expanded', expanded);
+        toggleEl.textContent = expanded ? '少なく表示 ∧' : 'さらに表示 ∨';
+      });
+    } else {
+      el.classList.add('wxo-assist-preview--empty');
+      el.textContent = el === this._articlePreview ? '条を選択すると本文が表示されます' : '項を選択すると本文が表示されます';
+    }
+  }
+  _updateGenerated() {
+    if (!this._contract || !this._article) {
+      this._generatedEl.textContent = '条項を選択すると自動生成されます';
+      this._insertBtn.disabled = true;
+      return;
+    }
+    var text = "".concat(this._contract, "\uFF1A");
+    if (this._article === '__preamble__') {
+      text += '前文';
+    } else {
+      var article = this.data[this._contract][this._article];
+      text += "".concat(this._article, " (").concat(article.title, ")");
+      if (this._clause) text += "\u7B2C".concat(this._clause, "\u9805");
+    }
+    text += 'について、';
+    var change = this._changeInput.value.trim();
+    if (change) text += change;
+    this._generatedEl.textContent = text;
+    this._insertBtn.disabled = false;
+  }
+}
+
+// Made with Bob
+
+/**
  * Chat window UI component
  * Renders the full chat interface: header, messages, input, feedback buttons
  */
@@ -1776,7 +2080,12 @@ class ChatWindow {
       onMinimize,
       onReload,
       feedbackEnabled = true,
-      feedbackOptions = null
+      feedbackOptions = null,
+      clauseAssistData = null,
+      clauseAssistAutoOpen = true,
+      escalationWebhookUrl = null,
+      escalationTriggerPhrases = [],
+      userInfo = null
     } = _ref;
     this.agent = agent;
     this.starterSettings = starterSettings;
@@ -1787,6 +2096,11 @@ class ChatWindow {
     this.onReload = onReload;
     this.feedbackEnabled = feedbackEnabled;
     this.feedbackOptions = feedbackOptions;
+    this.clauseAssistData = clauseAssistData;
+    this.clauseAssistAutoOpen = clauseAssistAutoOpen;
+    this.escalationWebhookUrl = escalationWebhookUrl;
+    this.escalationTriggerPhrases = escalationTriggerPhrases;
+    this.userInfo = userInfo;
     this.el = null;
     this.messagesEl = null;
     this.inputEl = null;
@@ -1798,11 +2112,13 @@ class ChatWindow {
     this.isExpanded = false;
     this.welcomeEl = null;
     this._windowLoadingEl = null;
+    this.assistPanel = null;
   }
   render(container) {
     this.el = document.createElement('div');
     this.el.className = 'wxo-chat-window';
-    this.el.innerHTML = "\n      <div class=\"wxo-chat-header\">\n        <div class=\"wxo-chat-header__left\">\n          <button class=\"wxo-btn-icon wxo-btn-reload tooltip-below\" aria-label=\"Reload\" data-tooltip=\"\u30EA\u30BB\u30C3\u30C8\">\u21BA</button>\n          <div class=\"wxo-chat-header__title\">\n            <span class=\"wxo-chat-header__icon\">".concat(this.agent.icon || '💬', "</span>\n            <span class=\"wxo-chat-header__name\">").concat(this._escapeHtml(this.agent.name), "</span>\n          </div>\n        </div>\n        <div class=\"wxo-chat-header__actions\">\n          <button class=\"wxo-btn-icon wxo-btn-download tooltip-below\" aria-label=\"Download\" data-tooltip=\"\u30C6\u30AD\u30B9\u30C8\u30C0\u30A6\u30F3\u30ED\u30FC\u30C9\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" width=\"14\" height=\"14\"><path d=\"M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4\"></path><polyline points=\"7 10 12 15 17 10\"></polyline><line x1=\"12\" y1=\"15\" x2=\"12\" y2=\"3\"></line></svg></button>\n          <button class=\"wxo-btn-icon wxo-btn-resize tooltip-below\" aria-label=\"Resize\" data-tooltip=\"\u30B5\u30A4\u30BA\u62E1\u5927\u3059\u308B\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" width=\"14\" height=\"14\"><polyline points=\"15 3 21 3 21 9\"></polyline><polyline points=\"9 21 3 21 3 15\"></polyline><line x1=\"21\" y1=\"3\" x2=\"14\" y2=\"10\"></line><line x1=\"3\" y1=\"21\" x2=\"10\" y2=\"14\"></line></svg></button>\n          <button class=\"wxo-btn-icon wxo-btn-minimize tooltip-below\" aria-label=\"Minimize\" data-tooltip=\"\u6700\u5C0F\u5316\">\u2212</button>\n        </div>\n      </div>\n      <div class=\"wxo-chat-messages\"></div>\n      <button class=\"wxo-scroll-bottom\" data-tooltip=\"\u4E00\u756A\u4E0B\u3078\u30B9\u30AF\u30ED\u30FC\u30EB\" style=\"display:none\" aria-label=\"\u4E00\u756A\u4E0B\u3078\u30B9\u30AF\u30ED\u30FC\u30EB\">\n        <svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" width=\"16\" height=\"16\"><polyline points=\"6 9 12 15 18 9\"></polyline><line x1=\"4\" y1=\"19\" x2=\"20\" y2=\"19\"></line></svg>\n      </button>\n      <div class=\"wxo-chat-input-area\">\n        <div class=\"wxo-input-wrap\">\n          <textarea class=\"wxo-chat-input\" rows=\"1\" placeholder=\"\u4F55\u304B\u3092\u5165\u529B\u3057\u3066\u304F\u3060\u3055\u3044...\"></textarea>\n          <button class=\"wxo-chat-send\" data-tooltip=\"\u9001\u4FE1\">\n            <svg viewBox=\"0 0 32 32\" fill=\"currentColor\" width=\"16\" height=\"16\" xmlns=\"http://www.w3.org/2000/svg\">\n              <path d=\"M27.45,15.11l-22-11a1,1,0,0,0-1.08.12,1,1,0,0,0-.33,1L7,16,4,26.74A1,1,0,0,0,5,28a1,1,0,0,0,.45-.11l22-11a1,1,0,0,0,0-1.78Zm-20.9,10L8.76,17H18V15H8.76L6.55,6.89,24.76,16Z\"/>\n            </svg>\n          </button>\n        </div>\n      </div>\n    ");
+    var assistBtnHtml = this.clauseAssistData ? "<button class=\"wxo-assist-btn\" data-tooltip=\"\u6761\u9805\u30A2\u30B7\u30B9\u30C8\" aria-label=\"\u6761\u9805\u30A2\u30B7\u30B9\u30C8\">\uD83D\uDCCB</button>" : '';
+    this.el.innerHTML = "\n      <div class=\"wxo-chat-header\">\n        <div class=\"wxo-chat-header__left\">\n          <button class=\"wxo-btn-icon wxo-btn-reload tooltip-below\" aria-label=\"Reload\" data-tooltip=\"\u30EA\u30BB\u30C3\u30C8\">\u21BA</button>\n          <div class=\"wxo-chat-header__title\">\n            <span class=\"wxo-chat-header__icon\">".concat(this.agent.icon || '💬', "</span>\n            <span class=\"wxo-chat-header__name\">").concat(this._escapeHtml(this.agent.name), "</span>\n          </div>\n        </div>\n        <div class=\"wxo-chat-header__actions\">\n          <button class=\"wxo-btn-icon wxo-btn-download tooltip-below\" aria-label=\"Download\" data-tooltip=\"\u30C6\u30AD\u30B9\u30C8\u30C0\u30A6\u30F3\u30ED\u30FC\u30C9\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" width=\"14\" height=\"14\"><path d=\"M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4\"></path><polyline points=\"7 10 12 15 17 10\"></polyline><line x1=\"12\" y1=\"15\" x2=\"12\" y2=\"3\"></line></svg></button>\n          <button class=\"wxo-btn-icon wxo-btn-resize tooltip-below\" aria-label=\"Resize\" data-tooltip=\"\u30B5\u30A4\u30BA\u62E1\u5927\u3059\u308B\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" width=\"14\" height=\"14\"><polyline points=\"15 3 21 3 21 9\"></polyline><polyline points=\"9 21 3 21 3 15\"></polyline><line x1=\"21\" y1=\"3\" x2=\"14\" y2=\"10\"></line><line x1=\"3\" y1=\"21\" x2=\"10\" y2=\"14\"></line></svg></button>\n          <button class=\"wxo-btn-icon wxo-btn-minimize tooltip-below\" aria-label=\"Minimize\" data-tooltip=\"\u6700\u5C0F\u5316\">\u2212</button>\n        </div>\n      </div>\n      <div class=\"wxo-chat-messages\"></div>\n      <button class=\"wxo-scroll-bottom\" data-tooltip=\"\u4E00\u756A\u4E0B\u3078\u30B9\u30AF\u30ED\u30FC\u30EB\" style=\"display:none\" aria-label=\"\u4E00\u756A\u4E0B\u3078\u30B9\u30AF\u30ED\u30FC\u30EB\">\n        <svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" width=\"16\" height=\"16\"><polyline points=\"6 9 12 15 18 9\"></polyline><line x1=\"4\" y1=\"19\" x2=\"20\" y2=\"19\"></line></svg>\n      </button>\n      <div class=\"wxo-chat-input-area\">\n        <div class=\"wxo-input-wrap").concat(this.clauseAssistData ? ' wxo-input-wrap--with-assist' : '', "\">\n          <textarea class=\"wxo-chat-input\" rows=\"1\" placeholder=\"\u4F55\u304B\u3092\u5165\u529B\u3057\u3066\u304F\u3060\u3055\u3044...\"></textarea>\n          ").concat(assistBtnHtml, "\n          <button class=\"wxo-chat-send\" data-tooltip=\"\u9001\u4FE1\">\n            <svg viewBox=\"0 0 32 32\" fill=\"currentColor\" width=\"16\" height=\"16\" xmlns=\"http://www.w3.org/2000/svg\">\n              <path d=\"M27.45,15.11l-22-11a1,1,0,0,0-1.08.12,1,1,0,0,0-.33,1L7,16,4,26.74A1,1,0,0,0,5,28a1,1,0,0,0,.45-.11l22-11a1,1,0,0,0,0-1.78Zm-20.9,10L8.76,17H18V15H8.76L6.55,6.89,24.76,16Z\"/>\n            </svg>\n          </button>\n        </div>\n      </div>\n    ");
     this.messagesEl = this.el.querySelector('.wxo-chat-messages');
     this.inputEl = this.el.querySelector('.wxo-chat-input');
     this.sendBtn = this.el.querySelector('.wxo-chat-send');
@@ -1843,6 +2159,41 @@ class ChatWindow {
     });
     this.sendBtn.disabled = true; // initially empty
 
+    // Clause assist panel
+    if (this.clauseAssistData) {
+      this.assistPanel = new ContractAssistPanel({
+        clauseAssistData: this.clauseAssistData,
+        onInsert: text => {
+          this.inputEl.value = text;
+          this.sendBtn.disabled = false;
+          this._resizeInput();
+          this.inputEl.focus();
+        }
+      });
+      this.assistPanel.render(this.el);
+      // Move panel to just before the input area so it sits in the flex flow
+      var inputAreaEl = this.el.querySelector('.wxo-chat-input-area');
+      this.el.insertBefore(this.assistPanel.el, inputAreaEl);
+      var assistBtn = this.el.querySelector('.wxo-assist-btn');
+      assistBtn.addEventListener('click', () => {
+        var active = this.assistPanel.isVisible;
+        this.assistPanel.toggle();
+        assistBtn.classList.toggle('wxo-assist-btn--active', !active);
+      });
+      if (this.clauseAssistAutoOpen) {
+        container.appendChild(this.el);
+        requestAnimationFrame(() => {
+          var inputArea = this.el.querySelector('.wxo-chat-input-area');
+          if (inputArea) this.assistPanel.el.style.bottom = inputArea.offsetHeight + 'px';
+          requestAnimationFrame(() => {
+            this.assistPanel.show();
+            assistBtn.classList.add('wxo-assist-btn--active');
+          });
+        });
+        this._scrollToBottom();
+        return;
+      }
+    }
     container.appendChild(this.el);
     this._scrollToBottom();
   }
@@ -1958,10 +2309,62 @@ class ChatWindow {
       });
     }
     actionRow.appendChild(this._createCopyButton(fullText || ''));
+
+    // Escalation button: shown when agent response contains a trigger phrase
+    if (this.escalationWebhookUrl && this.escalationTriggerPhrases.length > 0) {
+      var triggered = this.escalationTriggerPhrases.some(p => (fullText || '').includes(p));
+      if (triggered) {
+        var escalateBtn = document.createElement('button');
+        escalateBtn.className = 'wxo-escalation-btn';
+        escalateBtn.textContent = '法務に通知';
+        escalateBtn.addEventListener('click', () => this._sendEscalationNotification(fullText || '', escalateBtn));
+        actionRow.appendChild(escalateBtn);
+      }
+    }
     this.streamingEl.appendChild(actionRow);
     if (fbPanelEl) this.streamingEl.appendChild(fbPanelEl);
     this.streamingEl = null;
     this._scrollToBottom();
+  }
+  _sendEscalationNotification(answer, btn) {
+    var _reverse$find, _this$userInfo, _this$userInfo2, _this$userInfo3;
+    btn.disabled = true;
+    btn.textContent = '送信中...';
+    var question = ((_reverse$find = [...this.messages].reverse().find(m => m.sender === 'user')) === null || _reverse$find === void 0 ? void 0 : _reverse$find.text) || '';
+    var userName = ((_this$userInfo = this.userInfo) === null || _this$userInfo === void 0 ? void 0 : _this$userInfo.displayName) || ((_this$userInfo2 = this.userInfo) === null || _this$userInfo2 === void 0 ? void 0 : _this$userInfo2.name) || ((_this$userInfo3 = this.userInfo) === null || _this$userInfo3 === void 0 ? void 0 : _this$userInfo3.loginName) || '不明';
+    var payload = {
+      '@type': 'MessageCard',
+      '@context': 'https://schema.org/extensions',
+      summary: '法務エスカレーション',
+      themeColor: '0077C8',
+      title: '📋 法務エスカレーション',
+      sections: [{
+        facts: [{
+          name: '質問者',
+          value: userName
+        }, {
+          name: 'エージェント',
+          value: this.agent.name
+        }, {
+          name: '質問',
+          value: question
+        }],
+        text: "**AI\u306E\u56DE\u7B54:** ".concat(answer.replace(/\n/g, '<br>'))
+      }]
+    };
+    fetch(this.escalationWebhookUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    }).then(() => {
+      btn.textContent = '✓ 通知済み';
+      btn.classList.add('wxo-escalation-btn--sent');
+    }).catch(() => {
+      btn.disabled = false;
+      btn.textContent = '法務に通知';
+    });
   }
   _handleSend() {
     if (!this.inputEl || this.sendBtn.disabled) return;
@@ -1988,6 +2391,10 @@ class ChatWindow {
     if (!this.inputEl) return;
     this.inputEl.style.height = 'auto';
     this.inputEl.style.height = this.inputEl.scrollHeight + 'px';
+    if (this.assistPanel && this.assistPanel.el) {
+      var inputArea = this.el.querySelector('.wxo-chat-input-area');
+      if (inputArea) this.assistPanel.el.style.bottom = inputArea.offsetHeight + 'px';
+    }
   }
   _setInputDisabled(disabled) {
     if (this.inputEl) this.inputEl.disabled = disabled;
@@ -2341,12 +2748,25 @@ class ChatWindow {
       this.inputEl.value = '';
       this._resizeInput();
     }
+    if (this.assistPanel) this.assistPanel.hide();
     this._renderWelcomeScreen();
     this._setInputDisabled(false);
     if (this.sendBtn) this.sendBtn.disabled = true;
     if (this.scrollBtnEl) this.scrollBtnEl.style.display = 'none';
+    if (this.assistPanel && this.clauseAssistAutoOpen) {
+      requestAnimationFrame(() => {
+        var inputArea = this.el && this.el.querySelector('.wxo-chat-input-area');
+        if (inputArea && this.assistPanel.el) this.assistPanel.el.style.bottom = inputArea.offsetHeight + 'px';
+        requestAnimationFrame(() => {
+          this.assistPanel.show();
+          var assistBtn = this.el && this.el.querySelector('.wxo-assist-btn');
+          if (assistBtn) assistBtn.classList.add('wxo-assist-btn--active');
+        });
+      });
+    }
   }
   destroy() {
+    if (this.assistPanel) this.assistPanel.destroy();
     if (this.el && this.el.parentNode) {
       this.el.parentNode.removeChild(this.el);
     }
@@ -2485,9 +2905,14 @@ class UIManager {
       var chatWindow = new ChatWindow({
         agent,
         starterSettings: null,
-        messages: _this2.client.getMessages(),
+        messages: [],
         feedbackEnabled,
         feedbackOptions,
+        clauseAssistData: agent.clauseAssistData || null,
+        clauseAssistAutoOpen: agent.clauseAssistAutoOpen !== false,
+        escalationWebhookUrl: _this2.config.getEscalationWebhookUrl(),
+        escalationTriggerPhrases: _this2.config.getEscalationTriggerPhrases(),
+        userInfo: _this2.config.getFeedbackUserInfo(),
         onSend: function () {
           var _onSend = _asyncToGenerator(function* (text) {
             yield _this2.client.sendMessage(text);
@@ -2556,7 +2981,7 @@ class UIManager {
     var primaryColor = this.config.get('theme.primaryColor') || '#0f62fe';
     var style = document.createElement('style');
     style.id = 'wxo-sdk-styles';
-    style.textContent = "\n      #wxo-ui-container {\n        position: fixed;\n        bottom: 20px;\n        right: 20px;\n        z-index: 99999;\n        display: flex;\n        flex-direction: column-reverse;\n        align-items: flex-end;\n        gap: 10px;\n        font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;\n      }\n\n      /* Floating button */\n      .wxo-floating-btn {\n        width: 60px;\n        height: 60px;\n        border-radius: 50%;\n        background: ".concat(primaryColor, ";\n        display: flex;\n        align-items: center;\n        justify-content: center;\n        cursor: pointer;\n        box-shadow: 0 4px 12px rgba(0,0,0,0.25);\n        transition: transform 0.2s, box-shadow 0.2s;\n        flex-shrink: 0;\n      }\n      .wxo-floating-btn:hover {\n        transform: scale(1.05);\n        box-shadow: 0 6px 16px rgba(0,0,0,0.3);\n      }\n      .wxo-floating-btn--active {\n        background: #005A96;\n      }\n\n      /* Agent selector rise animation */\n      @keyframes wxo-agent-rise {\n        0% {\n          opacity: 0;\n          transform: translateY(52px) rotate(90deg);\n        }\n        40% {\n          opacity: 1;\n        }\n        100% {\n          opacity: 1;\n          transform: translateY(0) rotate(0deg);\n        }\n      }\n\n      /* Agent selector */\n      .wxo-agent-selector {\n        flex-direction: column;\n        gap: 8px;\n        align-items: flex-end;\n      }\n      .wxo-agent-item {\n        display: flex;\n        align-items: center;\n        justify-content: flex-end;\n        background: #E8F4FC;\n        border-radius: 24px;\n        padding: 10px 18px;\n        cursor: pointer;\n        box-shadow: 0 3px 8px rgba(0,0,0,0.12);\n        white-space: nowrap;\n        transform-origin: right center;\n        animation: wxo-agent-rise 0.45s cubic-bezier(0.34, 1.3, 0.64, 1) both;\n      }\n      .wxo-agent-item:hover {\n        box-shadow: 0 4px 10px rgba(0,0,0,0.18);\n      }\n      .wxo-agent-item__label {\n        font-size: 14px;\n        font-weight: 500;\n        color: #161616;\n      }\n\n      /* Chat window */\n      .wxo-chat-window {\n        width: 380px;\n        height: 580px;\n        max-height: calc(100vh - 100px);\n        background: white;\n        border-radius: 12px;\n        box-shadow: 0 8px 32px rgba(0,0,0,0.2);\n        display: flex;\n        flex-direction: column;\n        overflow: hidden;\n        transition: width 0.3s, height 0.3s;\n        position: relative;\n      }\n      .wxo-chat-window--expanded {\n        width: 620px;\n        height: 720px;\n      }\n\n      /* Chat header */\n      .wxo-chat-header {\n        background: #ffffff;\n        color: #161616;\n        padding: 14px 16px;\n        display: flex;\n        align-items: center;\n        justify-content: space-between;\n        flex-shrink: 0;\n        border-bottom: 1px solid #e0e0e0;\n      }\n      .wxo-chat-header__left {\n        display: flex;\n        align-items: center;\n        gap: 4px;\n      }\n      .wxo-chat-header__title {\n        display: flex;\n        align-items: center;\n        gap: 8px;\n        font-weight: 700;\n        font-size: 15px;\n        color: #161616;\n      }\n      .wxo-chat-header__icon {\n        font-size: 20px;\n      }\n      .wxo-chat-header__actions {\n        display: flex;\n        gap: 4px;\n      }\n      .wxo-btn-icon {\n        background: none;\n        border: none;\n        color: #525252;\n        cursor: pointer;\n        font-size: 18px;\n        padding: 4px 6px;\n        border-radius: 4px;\n        line-height: 1;\n        transition: background 0.15s, color 0.15s;\n      }\n      .wxo-btn-icon:hover {\n        background: #f4f4f4;\n        color: #161616;\n      }\n\n      /* Messages area - gradient: white top \u2192 #E8F4FC bottom */\n      .wxo-chat-messages {\n        flex: 1;\n        overflow-y: auto;\n        padding: 16px 16px 24px;\n        background: linear-gradient(to bottom, #ffffff 0%, #ffffff 50%, #E8F4FC 100%);\n        display: flex;\n        flex-direction: column;\n        gap: 12px;\n      }\n\n      /* Individual messages */\n      .wxo-message {\n        max-width: 80%;\n        display: flex;\n        flex-direction: column;\n      }\n      .wxo-message--user {\n        align-self: flex-end;\n        align-items: flex-end;\n      }\n      .wxo-message--agent {\n        align-self: flex-start;\n        align-items: flex-start;\n      }\n\n      /* Sender name + time above bubble */\n      .wxo-message__meta {\n        font-size: 11px;\n        color: #161616;\n        margin-bottom: 3px;\n        padding: 0 4px;\n        display: flex;\n        gap: 6px;\n        align-items: baseline;\n      }\n      .wxo-message--user .wxo-message__meta { justify-content: flex-end; }\n      .wxo-message--agent .wxo-message__meta { justify-content: flex-start; }\n      .wxo-message__meta-name { font-weight: 700; font-size: 13px; }\n      .wxo-message__meta-time { font-weight: 400; color: #525252; }\n\n      .wxo-message__content {\n        padding: 10px 14px;\n        border-radius: 12px;\n        font-size: 14px;\n        line-height: 1.5;\n      }\n      .wxo-message--user .wxo-message__content {\n        background: #e0e0e0;\n        color: #161616;\n        border-top-right-radius: 4px;\n      }\n      .wxo-message--agent .wxo-message__content {\n        background: transparent;\n        color: #161616;\n        border: none;\n        padding-left: 0;\n      }\n\n      /* Loading dots */\n      @keyframes wxo-blink {\n        0%, 80%, 100% { opacity: 0.2; }\n        40% { opacity: 1; }\n      }\n      .wxo-loading-dots span {\n        animation: wxo-blink 1.4s infinite;\n        display: inline-block;\n        margin: 0 1px;\n        font-size: 20px;\n        line-height: 1;\n      }\n      .wxo-loading-dots span:nth-child(2) { animation-delay: 0.2s; }\n      .wxo-loading-dots span:nth-child(3) { animation-delay: 0.4s; }\n\n      /* Window-open loading spinner */\n      .wxo-window-loading {\n        display: flex; justify-content: center; align-items: center; flex: 1; padding: 40px;\n      }\n      .wxo-window-loading::after {\n        content: ''; width: 28px; height: 28px;\n        border: 3px solid #e0e0e0; border-top-color: #8d8d8d;\n        border-radius: 50%; animation: wxo-spin 1.4s linear infinite;\n      }\n      @keyframes wxo-spin { to { transform: rotate(360deg); } }\n\n      /* Markdown inside agent messages */\n      .wxo-message--agent .wxo-message__content p { margin: 4px 0; }\n      .wxo-message--agent .wxo-message__content h1,\n      .wxo-message--agent .wxo-message__content h2,\n      .wxo-message--agent .wxo-message__content h3 {\n        margin: 6px 0 3px; font-size: 1em; font-weight: 600;\n      }\n      .wxo-message--agent .wxo-message__content table {\n        border-collapse: collapse; width: 100%; margin: 6px 0; font-size: 13px;\n      }\n      .wxo-message--agent .wxo-message__content th,\n      .wxo-message--agent .wxo-message__content td {\n        border: 1px solid #ccc; padding: 4px 8px; text-align: left;\n      }\n      .wxo-message--agent .wxo-message__content th {\n        background: #f0f0f0; font-weight: 600;\n      }\n      .wxo-message--agent .wxo-message__content code {\n        background: #f4f4f4; padding: 1px 4px; border-radius: 3px;\n        font-family: monospace; font-size: 0.9em;\n      }\n      .wxo-message--agent .wxo-message__content pre {\n        background: #f4f4f4; padding: 10px; border-radius: 4px;\n        overflow-x: auto; margin: 4px 0;\n      }\n      .wxo-message--agent .wxo-message__content ul,\n      .wxo-message--agent .wxo-message__content ol {\n        margin: 4px 0; padding-left: 20px;\n      }\n      .wxo-message--agent .wxo-message__content blockquote {\n        margin: 4px 0; padding: 4px 12px;\n        border-left: 3px solid #8d8d8d;\n        color: #525252;\n        background: #f4f4f4;\n        border-radius: 0 4px 4px 0;\n        font-style: normal;\n      }\n\n      /* Feedback - thumbs (inline in action row, no border) */\n      .wxo-feedback { margin-top: 4px; }\n      .wxo-feedback__btn {\n        background: none;\n        border: none;\n        border-radius: 4px;\n        padding: 3px 4px;\n        height: 24px;\n        cursor: pointer;\n        display: flex;\n        align-items: center;\n        transition: background 0.15s;\n      }\n      .wxo-feedback__btn:hover { background: #f0f0f0; }\n\n      /* Feedback - detail panel */\n      .wxo-feedback__panel {\n        display: flex;\n        flex-direction: column;\n        gap: 10px;\n        border: 1px solid #e0e0e0;\n        border-radius: 8px;\n        padding: 14px 14px 0;\n        background: white;\n      }\n      .wxo-feedback__panel-header {\n        display: flex;\n        align-items: center;\n        gap: 8px;\n      }\n      .wxo-feedback__selected { display: flex; align-items: center; }\n      .wxo-feedback__panel-title {\n        font-size: 13px;\n        font-weight: 700;\n        color: #161616;\n      }\n      .wxo-feedback__panel-subtitle {\n        font-size: 12px;\n        color: #525252;\n        margin-top: -4px;\n      }\n      .wxo-feedback__pills {\n        display: flex;\n        flex-wrap: wrap;\n        gap: 6px;\n      }\n      .wxo-feedback__pill {\n        background: white;\n        border: 1px solid #c6c6c6;\n        border-radius: 16px;\n        padding: 4px 12px;\n        font-size: 12px;\n        font-family: inherit;\n        cursor: pointer;\n        transition: background 0.15s, border-color 0.15s, color 0.15s;\n        display: flex;\n        align-items: center;\n        justify-content: center;\n      }\n      .wxo-feedback__pill:hover { background: #f4f4f4; }\n      .wxo-feedback__pill--selected {\n        background: #E8F4FC;\n        border-color: ").concat(primaryColor, ";\n        color: ").concat(primaryColor, ";\n      }\n      .wxo-feedback__comment {\n        width: 100%;\n        border: 1px solid #c6c6c6;\n        border-radius: 6px;\n        padding: 8px 10px;\n        font-size: 12px;\n        font-family: inherit;\n        resize: none;\n        box-sizing: border-box;\n        outline: none;\n      }\n      .wxo-feedback__comment:focus { border-color: ").concat(primaryColor, "; }\n      .wxo-feedback__disclaimer {\n        font-size: 11px;\n        color: #525252;\n        line-height: 1.4;\n      }\n      .wxo-feedback__panel-actions {\n        display: flex;\n        margin: 0 -14px;\n        border-top: 1px solid #e0e0e0;\n        overflow: hidden;\n        border-bottom-left-radius: 7px;\n        border-bottom-right-radius: 7px;\n        min-height: 40px;\n      }\n      .wxo-feedback__cancel {\n        flex: 1;\n        background: white;\n        border: none !important;\n        border-right: 1px solid #e0e0e0 !important;\n        border-radius: 0;\n        padding: 0 12px;\n        height: 40px;\n        min-height: 40px;\n        font-size: 12px;\n        font-family: inherit;\n        cursor: pointer;\n        transition: background 0.15s;\n        box-sizing: border-box !important;\n        line-height: 40px;\n      }\n      .wxo-feedback__cancel:hover { background: #f4f4f4; }\n      .wxo-feedback__submit {\n        flex: 1;\n        background: ").concat(primaryColor, ";\n        color: white;\n        border: none !important;\n        border-radius: 0;\n        padding: 0 12px;\n        height: 40px;\n        min-height: 40px;\n        font-size: 12px;\n        font-family: inherit;\n        cursor: pointer;\n        transition: background 0.15s;\n        box-sizing: border-box !important;\n        line-height: 40px;\n      }\n      .wxo-feedback__submit:hover { background: #005A96; }\n      .wxo-feedback__thanks {\n        font-size: 12px;\n        color: #525252;\n      }\n\n      /* Input area */\n      .wxo-chat-input-area {\n        padding: 0;\n        border-top: 1px solid #e0e0e0;\n        background: white;\n        flex-shrink: 0;\n      }\n      .wxo-chat-input-area:focus-within {\n        border-top-color: #0f62fe;\n      }\n      .wxo-input-wrap {\n        position: relative;\n      }\n      .wxo-chat-input {\n        display: block;\n        width: 100%;\n        margin: 0;\n        padding: 12px 52px 12px 16px;\n        border: none !important;\n        border-radius: 0 0 12px 12px;\n        font-size: 14px;\n        outline: none !important;\n        box-shadow: none !important;\n        font-family: inherit;\n        box-sizing: border-box;\n        resize: none;\n        overflow-y: hidden;\n        min-height: 52px;\n        max-height: 160px;\n        line-height: 1.5;\n      }\n      .wxo-chat-window .wxo-chat-input:focus {\n        outline: none !important;\n        border: none !important;\n        box-shadow: inset 0 0 0 2px #0f62fe !important;\n      }\n      .wxo-chat-input:disabled { background: #f4f4f4; }\n      .wxo-chat-send {\n        position: absolute;\n        right: 14px;\n        bottom: 13px;\n        width: 26px;\n        height: 26px;\n        background: #c6c6c6;\n        color: #ffffff;\n        border: none;\n        border-radius: 50%;\n        display: flex;\n        align-items: center;\n        justify-content: center;\n        cursor: default;\n        transition: background 0.15s;\n        flex-shrink: 0;\n      }\n      .wxo-chat-send:not(:disabled) {\n        background: #161616;\n        cursor: pointer;\n      }\n      .wxo-chat-send:not(:disabled):hover { background: #393939; }\n\n      /* Scroll-to-bottom button */\n      .wxo-scroll-bottom {\n        position: absolute;\n        bottom: 66px;\n        left: 50%;\n        transform: translateX(-50%);\n        width: 32px;\n        height: 32px;\n        border-radius: 50%;\n        background: #161616;\n        border: none;\n        box-shadow: 0 2px 8px rgba(0,0,0,0.25);\n        cursor: pointer;\n        display: flex;\n        align-items: center;\n        justify-content: center;\n        color: #ffffff;\n        transition: box-shadow 0.15s, background 0.15s;\n        z-index: 10;\n      }\n      .wxo-scroll-bottom:hover {\n        background: #393939;\n        box-shadow: 0 3px 10px rgba(0,0,0,0.3);\n      }\n\n      /* Welcome screen */\n      .wxo-welcome {\n        display: flex;\n        flex-direction: column;\n        align-items: flex-start;\n        padding: 24px 20px 16px;\n        gap: 0;\n        flex: 1;\n        overflow-y: auto;\n      }\n      .wxo-welcome__greeting {\n        font-size: 28px;\n        font-weight: 400;\n        color: #161616;\n        margin-bottom: 8px;\n        line-height: 1.25;\n      }\n      .wxo-welcome__description {\n        font-size: 13px;\n        color: #525252;\n        line-height: 1.6;\n        margin-bottom: 24px;\n      }\n      .wxo-welcome__prompts-label {\n        font-size: 11px;\n        font-weight: 600;\n        color: #525252;\n        text-transform: uppercase;\n        letter-spacing: 0.08em;\n        margin-bottom: 10px;\n      }\n      .wxo-welcome__prompts {\n        display: flex;\n        flex-direction: column;\n        gap: 8px;\n        width: 100%;\n      }\n      .wxo-welcome__prompt {\n        background: white;\n        border: 1px solid #e0e0e0;\n        border-radius: 8px;\n        padding: 14px 16px;\n        font-size: 13px;\n        font-family: inherit;\n        color: #161616;\n        cursor: pointer;\n        text-align: left;\n        line-height: 1.5;\n        transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;\n        display: flex;\n        flex-direction: column;\n        align-items: flex-start;\n        min-height: 96px;\n        overflow: hidden;\n      }\n      .wxo-welcome__prompt:hover {\n        background: #f4f4f4;\n        border-color: #8d8d8d;\n        box-shadow: 0 2px 6px rgba(0,0,0,0.08);\n      }\n      .wxo-welcome__prompt-text {\n        display: -webkit-box;\n        -webkit-line-clamp: 3;\n        -webkit-box-orient: vertical;\n        overflow: hidden;\n        width: 100%;\n        margin-bottom: auto;\n      }\n      .wxo-welcome__prompt-arrow {\n        color: ").concat(primaryColor, ";\n        font-size: 14px;\n        line-height: 1;\n        align-self: flex-end;\n        margin-top: 8px;\n      }\n\n      /* Message action row (copy button) */\n      .wxo-message__actions {\n        display: flex;\n        gap: 4px;\n        margin-top: 4px;\n        padding: 0 4px;\n        opacity: 0;\n        transition: opacity 0.15s;\n      }\n      .wxo-message--agent .wxo-message__actions { opacity: 1; }\n      .wxo-message--user .wxo-message__actions { justify-content: flex-end; }\n      .wxo-message--user:hover .wxo-message__actions { opacity: 1; }\n      .wxo-copy-btn {\n        background: none;\n        border: none;\n        border-radius: 4px;\n        padding: 3px 6px;\n        height: 24px;\n        cursor: pointer;\n        color: #525252;\n        display: flex;\n        align-items: center;\n        transition: background 0.15s, color 0.15s;\n      }\n      .wxo-copy-btn:hover {\n        background: #f4f4f4;\n        color: #161616;\n      }\n\n      /* Custom tooltip (data-tooltip) */\n      [data-tooltip] { position: relative; }\n      [data-tooltip]::after {\n        content: attr(data-tooltip);\n        position: absolute;\n        bottom: calc(100% + 8px);\n        left: 50%;\n        transform: translateX(-50%);\n        background: #161616;\n        color: #ffffff;\n        font-size: 11px;\n        line-height: 1;\n        padding: 4px 8px;\n        border-radius: 4px;\n        white-space: nowrap;\n        pointer-events: none;\n        opacity: 0;\n        transition: opacity 0.1s;\n        z-index: 100;\n      }\n      [data-tooltip]::before {\n        content: '';\n        position: absolute;\n        bottom: calc(100% + 4px);\n        left: 50%;\n        transform: translateX(-50%);\n        border: 4px solid transparent;\n        border-top-color: #161616;\n        pointer-events: none;\n        opacity: 0;\n        transition: opacity 0.1s;\n        z-index: 100;\n      }\n      [data-tooltip]:hover::after,\n      [data-tooltip]:hover::before {\n        opacity: 1;\n        transition-delay: 0.1s;\n      }\n      /* These must stay absolutely positioned (overrides [data-tooltip]{position:relative}) */\n      .wxo-input-wrap .wxo-chat-send { position: absolute; }\n      .wxo-chat-window .wxo-scroll-bottom { position: absolute; }\n\n      /* Tooltip below variant (for header buttons at top of window) */\n      .tooltip-below[data-tooltip]::after {\n        bottom: auto;\n        top: calc(100% + 8px);\n      }\n      .tooltip-below[data-tooltip]::before {\n        bottom: auto;\n        top: calc(100% + 4px);\n        border-top-color: transparent;\n        border-bottom-color: #161616;\n      }\n    ");
+    style.textContent = "\n      #wxo-ui-container {\n        position: fixed;\n        bottom: 20px;\n        right: 20px;\n        z-index: 99999;\n        display: flex;\n        flex-direction: column-reverse;\n        align-items: flex-end;\n        gap: 10px;\n        font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;\n      }\n\n      /* Floating button */\n      .wxo-floating-btn {\n        width: 60px;\n        height: 60px;\n        border-radius: 50%;\n        background: ".concat(primaryColor, ";\n        display: flex;\n        align-items: center;\n        justify-content: center;\n        cursor: pointer;\n        box-shadow: 0 4px 12px rgba(0,0,0,0.25);\n        transition: transform 0.2s, box-shadow 0.2s;\n        flex-shrink: 0;\n      }\n      .wxo-floating-btn:hover {\n        transform: scale(1.05);\n        box-shadow: 0 6px 16px rgba(0,0,0,0.3);\n      }\n      .wxo-floating-btn--active {\n        background: #005A96;\n      }\n\n      /* Agent selector rise animation */\n      @keyframes wxo-agent-rise {\n        0% {\n          opacity: 0;\n          transform: translateY(52px) rotate(90deg);\n        }\n        40% {\n          opacity: 1;\n        }\n        100% {\n          opacity: 1;\n          transform: translateY(0) rotate(0deg);\n        }\n      }\n\n      /* Agent selector */\n      .wxo-agent-selector {\n        flex-direction: column;\n        gap: 8px;\n        align-items: flex-end;\n      }\n      .wxo-agent-item {\n        display: flex;\n        align-items: center;\n        justify-content: flex-end;\n        background: #E8F4FC;\n        border-radius: 24px;\n        padding: 10px 18px;\n        cursor: pointer;\n        box-shadow: 0 3px 8px rgba(0,0,0,0.12);\n        white-space: nowrap;\n        transform-origin: right center;\n        animation: wxo-agent-rise 0.45s cubic-bezier(0.34, 1.3, 0.64, 1) both;\n      }\n      .wxo-agent-item:hover {\n        box-shadow: 0 4px 10px rgba(0,0,0,0.18);\n      }\n      .wxo-agent-item__label {\n        font-size: 14px;\n        font-weight: 500;\n        color: #161616;\n      }\n\n      /* Chat window */\n      .wxo-chat-window {\n        width: 380px;\n        height: 580px;\n        max-height: calc(100vh - 100px);\n        background: white;\n        border-radius: 12px;\n        box-shadow: 0 8px 32px rgba(0,0,0,0.2);\n        display: flex;\n        flex-direction: column;\n        overflow: hidden;\n        transition: width 0.3s, height 0.3s;\n        position: relative;\n      }\n      .wxo-chat-window--expanded {\n        width: 620px;\n        height: 720px;\n      }\n\n      /* Chat header */\n      .wxo-chat-header {\n        background: #ffffff;\n        color: #161616;\n        padding: 14px 16px;\n        display: flex;\n        align-items: center;\n        justify-content: space-between;\n        flex-shrink: 0;\n        border-bottom: 1px solid #e0e0e0;\n      }\n      .wxo-chat-header__left {\n        display: flex;\n        align-items: center;\n        gap: 4px;\n      }\n      .wxo-chat-header__title {\n        display: flex;\n        align-items: center;\n        gap: 8px;\n        font-weight: 700;\n        font-size: 15px;\n        color: #161616;\n      }\n      .wxo-chat-header__icon {\n        font-size: 20px;\n      }\n      .wxo-chat-header__actions {\n        display: flex;\n        gap: 4px;\n      }\n      .wxo-btn-icon {\n        background: none;\n        border: none;\n        color: #525252;\n        cursor: pointer;\n        font-size: 18px;\n        padding: 4px 6px;\n        border-radius: 4px;\n        line-height: 1;\n        transition: background 0.15s, color 0.15s;\n      }\n      .wxo-btn-icon:hover {\n        background: #f4f4f4;\n        color: #161616;\n      }\n\n      /* Messages area - gradient: white top \u2192 #E8F4FC bottom */\n      .wxo-chat-messages {\n        flex: 1;\n        overflow-y: auto;\n        padding: 16px 16px 24px;\n        background: linear-gradient(to bottom, #ffffff 0%, #ffffff 50%, #E8F4FC 100%);\n        display: flex;\n        flex-direction: column;\n        gap: 12px;\n      }\n\n      /* Individual messages */\n      .wxo-message {\n        max-width: 80%;\n        display: flex;\n        flex-direction: column;\n      }\n      .wxo-message--user {\n        align-self: flex-end;\n        align-items: flex-end;\n      }\n      .wxo-message--agent {\n        align-self: flex-start;\n        align-items: flex-start;\n      }\n\n      /* Sender name + time above bubble */\n      .wxo-message__meta {\n        font-size: 11px;\n        color: #161616;\n        margin-bottom: 3px;\n        padding: 0 4px;\n        display: flex;\n        gap: 6px;\n        align-items: baseline;\n      }\n      .wxo-message--user .wxo-message__meta { justify-content: flex-end; }\n      .wxo-message--agent .wxo-message__meta { justify-content: flex-start; }\n      .wxo-message__meta-name { font-weight: 700; font-size: 13px; }\n      .wxo-message__meta-time { font-weight: 400; color: #525252; }\n\n      .wxo-message__content {\n        padding: 10px 14px;\n        border-radius: 12px;\n        font-size: 14px;\n        line-height: 1.5;\n      }\n      .wxo-message--user .wxo-message__content {\n        background: #e0e0e0;\n        color: #161616;\n        border-top-right-radius: 4px;\n      }\n      .wxo-message--agent .wxo-message__content {\n        background: transparent;\n        color: #161616;\n        border: none;\n        padding-left: 0;\n      }\n\n      /* Loading dots */\n      @keyframes wxo-blink {\n        0%, 80%, 100% { opacity: 0.2; }\n        40% { opacity: 1; }\n      }\n      .wxo-loading-dots span {\n        animation: wxo-blink 1.4s infinite;\n        display: inline-block;\n        margin: 0 1px;\n        font-size: 20px;\n        line-height: 1;\n      }\n      .wxo-loading-dots span:nth-child(2) { animation-delay: 0.2s; }\n      .wxo-loading-dots span:nth-child(3) { animation-delay: 0.4s; }\n\n      /* Window-open loading spinner */\n      .wxo-window-loading {\n        display: flex; justify-content: center; align-items: center; flex: 1; padding: 40px;\n      }\n      .wxo-window-loading::after {\n        content: ''; width: 28px; height: 28px;\n        border: 3px solid #e0e0e0; border-top-color: #8d8d8d;\n        border-radius: 50%; animation: wxo-spin 1.4s linear infinite;\n      }\n      @keyframes wxo-spin { to { transform: rotate(360deg); } }\n\n      /* Markdown inside agent messages */\n      .wxo-message--agent .wxo-message__content p { margin: 4px 0; }\n      .wxo-message--agent .wxo-message__content h1,\n      .wxo-message--agent .wxo-message__content h2,\n      .wxo-message--agent .wxo-message__content h3 {\n        margin: 6px 0 3px; font-size: 1em; font-weight: 600;\n      }\n      .wxo-message--agent .wxo-message__content table {\n        border-collapse: collapse; width: 100%; margin: 6px 0; font-size: 13px;\n      }\n      .wxo-message--agent .wxo-message__content th,\n      .wxo-message--agent .wxo-message__content td {\n        border: 1px solid #ccc; padding: 4px 8px; text-align: left;\n      }\n      .wxo-message--agent .wxo-message__content th {\n        background: #f0f0f0; font-weight: 600;\n      }\n      .wxo-message--agent .wxo-message__content code {\n        background: #f4f4f4; padding: 1px 4px; border-radius: 3px;\n        font-family: monospace; font-size: 0.9em;\n      }\n      .wxo-message--agent .wxo-message__content pre {\n        background: #f4f4f4; padding: 10px; border-radius: 4px;\n        overflow-x: auto; margin: 4px 0;\n      }\n      .wxo-message--agent .wxo-message__content ul,\n      .wxo-message--agent .wxo-message__content ol {\n        margin: 4px 0; padding-left: 20px;\n      }\n      .wxo-message--agent .wxo-message__content blockquote {\n        margin: 4px 0; padding: 4px 12px;\n        border-left: 3px solid #8d8d8d;\n        color: #525252;\n        background: #f4f4f4;\n        border-radius: 0 4px 4px 0;\n        font-style: normal;\n      }\n\n      /* Feedback - thumbs (inline in action row, no border) */\n      .wxo-feedback { margin-top: 4px; }\n      .wxo-feedback__btn {\n        background: none;\n        border: none;\n        border-radius: 4px;\n        padding: 3px 4px;\n        height: 24px;\n        cursor: pointer;\n        display: flex;\n        align-items: center;\n        transition: background 0.15s;\n      }\n      .wxo-feedback__btn:hover { background: #f0f0f0; }\n\n      /* Feedback - detail panel */\n      .wxo-feedback__panel {\n        display: flex;\n        flex-direction: column;\n        gap: 10px;\n        border: 1px solid #e0e0e0;\n        border-radius: 8px;\n        padding: 14px 14px 0;\n        background: white;\n      }\n      .wxo-feedback__panel-header {\n        display: flex;\n        align-items: center;\n        gap: 8px;\n      }\n      .wxo-feedback__selected { display: flex; align-items: center; }\n      .wxo-feedback__panel-title {\n        font-size: 13px;\n        font-weight: 700;\n        color: #161616;\n      }\n      .wxo-feedback__panel-subtitle {\n        font-size: 12px;\n        color: #525252;\n        margin-top: -4px;\n      }\n      .wxo-feedback__pills {\n        display: flex;\n        flex-wrap: wrap;\n        gap: 6px;\n      }\n      .wxo-feedback__pill {\n        background: white;\n        border: 1px solid #c6c6c6;\n        border-radius: 16px;\n        padding: 4px 12px;\n        font-size: 12px;\n        font-family: inherit;\n        cursor: pointer;\n        transition: background 0.15s, border-color 0.15s, color 0.15s;\n        display: flex;\n        align-items: center;\n        justify-content: center;\n      }\n      .wxo-feedback__pill:hover { background: #f4f4f4; }\n      .wxo-feedback__pill--selected {\n        background: #E8F4FC;\n        border-color: ").concat(primaryColor, ";\n        color: ").concat(primaryColor, ";\n      }\n      .wxo-feedback__comment {\n        width: 100%;\n        border: 1px solid #c6c6c6;\n        border-radius: 6px;\n        padding: 8px 10px;\n        font-size: 12px;\n        font-family: inherit;\n        resize: none;\n        box-sizing: border-box;\n        outline: none;\n      }\n      .wxo-feedback__comment:focus { border-color: ").concat(primaryColor, "; }\n      .wxo-feedback__disclaimer {\n        font-size: 11px;\n        color: #525252;\n        line-height: 1.4;\n      }\n      .wxo-feedback__panel-actions {\n        display: flex;\n        margin: 0 -14px;\n        border-top: 1px solid #e0e0e0;\n        overflow: hidden;\n        border-bottom-left-radius: 7px;\n        border-bottom-right-radius: 7px;\n        min-height: 40px;\n      }\n      .wxo-feedback__cancel {\n        flex: 1;\n        background: white;\n        border: none !important;\n        border-right: 1px solid #e0e0e0 !important;\n        border-radius: 0;\n        padding: 0 12px;\n        height: 40px;\n        min-height: 40px;\n        font-size: 12px;\n        font-family: inherit;\n        cursor: pointer;\n        transition: background 0.15s;\n        box-sizing: border-box !important;\n        line-height: 40px;\n      }\n      .wxo-feedback__cancel:hover { background: #f4f4f4; }\n      .wxo-feedback__submit {\n        flex: 1;\n        background: ").concat(primaryColor, ";\n        color: white;\n        border: none !important;\n        border-radius: 0;\n        padding: 0 12px;\n        height: 40px;\n        min-height: 40px;\n        font-size: 12px;\n        font-family: inherit;\n        cursor: pointer;\n        transition: background 0.15s;\n        box-sizing: border-box !important;\n        line-height: 40px;\n      }\n      .wxo-feedback__submit:hover { background: #005A96; }\n      .wxo-feedback__thanks {\n        font-size: 12px;\n        color: #525252;\n      }\n\n      /* Input area */\n      .wxo-chat-input-area {\n        padding: 0;\n        border-top: 1px solid #e0e0e0;\n        background: white;\n        flex-shrink: 0;\n      }\n      .wxo-chat-input-area:focus-within {\n        border-top-color: #0f62fe;\n      }\n      .wxo-input-wrap {\n        position: relative;\n      }\n      .wxo-chat-input {\n        display: block;\n        width: 100%;\n        margin: 0;\n        padding: 12px 52px 12px 16px;\n        border: none !important;\n        border-radius: 0 0 12px 12px;\n        font-size: 14px;\n        outline: none !important;\n        box-shadow: none !important;\n        font-family: inherit;\n        box-sizing: border-box;\n        resize: none;\n        overflow-y: hidden;\n        min-height: 52px;\n        max-height: 160px;\n        line-height: 1.5;\n      }\n      .wxo-chat-window .wxo-chat-input:focus {\n        outline: none !important;\n        border: none !important;\n        box-shadow: inset 0 0 0 2px #0f62fe !important;\n      }\n      .wxo-chat-input:disabled { background: #f4f4f4; }\n      .wxo-chat-send {\n        position: absolute;\n        right: 14px;\n        bottom: 13px;\n        width: 26px;\n        height: 26px;\n        background: #c6c6c6;\n        color: #ffffff;\n        border: none;\n        border-radius: 50%;\n        display: flex;\n        align-items: center;\n        justify-content: center;\n        cursor: default;\n        transition: background 0.15s;\n        flex-shrink: 0;\n      }\n      .wxo-chat-send:not(:disabled) {\n        background: #161616;\n        cursor: pointer;\n      }\n      .wxo-chat-send:not(:disabled):hover { background: #393939; }\n\n      /* Scroll-to-bottom button */\n      .wxo-scroll-bottom {\n        position: absolute;\n        bottom: 66px;\n        left: 50%;\n        transform: translateX(-50%);\n        width: 32px;\n        height: 32px;\n        border-radius: 50%;\n        background: #161616;\n        border: none;\n        box-shadow: 0 2px 8px rgba(0,0,0,0.25);\n        cursor: pointer;\n        display: flex;\n        align-items: center;\n        justify-content: center;\n        color: #ffffff;\n        transition: box-shadow 0.15s, background 0.15s;\n        z-index: 10;\n      }\n      .wxo-scroll-bottom:hover {\n        background: #393939;\n        box-shadow: 0 3px 10px rgba(0,0,0,0.3);\n      }\n\n      /* Welcome screen */\n      .wxo-welcome {\n        display: flex;\n        flex-direction: column;\n        align-items: flex-start;\n        padding: 24px 20px 16px;\n        gap: 0;\n        flex: 1;\n        overflow-y: auto;\n      }\n      .wxo-welcome__greeting {\n        font-size: 28px;\n        font-weight: 400;\n        color: #161616;\n        margin-bottom: 8px;\n        line-height: 1.25;\n      }\n      .wxo-welcome__description {\n        font-size: 13px;\n        color: #525252;\n        line-height: 1.6;\n        margin-bottom: 24px;\n      }\n      .wxo-welcome__prompts-label {\n        font-size: 11px;\n        font-weight: 600;\n        color: #525252;\n        text-transform: uppercase;\n        letter-spacing: 0.08em;\n        margin-bottom: 10px;\n      }\n      .wxo-welcome__prompts {\n        display: flex;\n        flex-direction: column;\n        gap: 8px;\n        width: 100%;\n      }\n      .wxo-welcome__prompt {\n        background: white;\n        border: 1px solid #e0e0e0;\n        border-radius: 8px;\n        padding: 14px 16px;\n        font-size: 13px;\n        font-family: inherit;\n        color: #161616;\n        cursor: pointer;\n        text-align: left;\n        line-height: 1.5;\n        transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;\n        display: flex;\n        flex-direction: column;\n        align-items: flex-start;\n        min-height: 96px;\n        overflow: hidden;\n      }\n      .wxo-welcome__prompt:hover {\n        background: #f4f4f4;\n        border-color: #8d8d8d;\n        box-shadow: 0 2px 6px rgba(0,0,0,0.08);\n      }\n      .wxo-welcome__prompt-text {\n        display: -webkit-box;\n        -webkit-line-clamp: 3;\n        -webkit-box-orient: vertical;\n        overflow: hidden;\n        width: 100%;\n        margin-bottom: auto;\n      }\n      .wxo-welcome__prompt-arrow {\n        color: ").concat(primaryColor, ";\n        font-size: 14px;\n        line-height: 1;\n        align-self: flex-end;\n        margin-top: 8px;\n      }\n\n      /* Message action row (copy button) */\n      .wxo-message__actions {\n        display: flex;\n        gap: 4px;\n        margin-top: 4px;\n        padding: 0 4px;\n        opacity: 0;\n        transition: opacity 0.15s;\n      }\n      .wxo-message--agent .wxo-message__actions { opacity: 1; }\n      .wxo-message--user .wxo-message__actions { justify-content: flex-end; }\n      .wxo-message--user:hover .wxo-message__actions { opacity: 1; }\n      .wxo-escalation-btn {\n        background: #0077C8;\n        color: #fff;\n        border: none;\n        border-radius: 12px;\n        padding: 3px 10px;\n        font-size: 11px;\n        cursor: pointer;\n        margin-left: 4px;\n        transition: background 0.15s;\n      }\n      .wxo-escalation-btn:hover { background: #005A96; }\n      .wxo-escalation-btn:disabled { cursor: default; opacity: 0.7; }\n      .wxo-escalation-btn--sent { background: #6a9955; }\n      .wxo-copy-btn {\n        background: none;\n        border: none;\n        border-radius: 4px;\n        padding: 3px 6px;\n        height: 24px;\n        cursor: pointer;\n        color: #525252;\n        display: flex;\n        align-items: center;\n        transition: background 0.15s, color 0.15s;\n      }\n      .wxo-copy-btn:hover {\n        background: #f4f4f4;\n        color: #161616;\n      }\n\n      /* Custom tooltip (data-tooltip) */\n      [data-tooltip] { position: relative; }\n      [data-tooltip]::after {\n        content: attr(data-tooltip);\n        position: absolute;\n        bottom: calc(100% + 8px);\n        left: 50%;\n        transform: translateX(-50%);\n        background: #161616;\n        color: #ffffff;\n        font-size: 11px;\n        line-height: 1;\n        padding: 4px 8px;\n        border-radius: 4px;\n        white-space: nowrap;\n        pointer-events: none;\n        opacity: 0;\n        transition: opacity 0.1s;\n        z-index: 100;\n      }\n      [data-tooltip]::before {\n        content: '';\n        position: absolute;\n        bottom: calc(100% + 4px);\n        left: 50%;\n        transform: translateX(-50%);\n        border: 4px solid transparent;\n        border-top-color: #161616;\n        pointer-events: none;\n        opacity: 0;\n        transition: opacity 0.1s;\n        z-index: 100;\n      }\n      [data-tooltip]:hover::after,\n      [data-tooltip]:hover::before {\n        opacity: 1;\n        transition-delay: 0.1s;\n      }\n      /* These must stay absolutely positioned (overrides [data-tooltip]{position:relative}) */\n      .wxo-input-wrap .wxo-chat-send { position: absolute; }\n      .wxo-chat-window .wxo-scroll-bottom { position: absolute; }\n\n      /* Tooltip below variant (for header buttons at top of window) */\n      .tooltip-below[data-tooltip]::after {\n        bottom: auto;\n        top: calc(100% + 8px);\n      }\n      .tooltip-below[data-tooltip]::before {\n        bottom: auto;\n        top: calc(100% + 4px);\n        border-top-color: transparent;\n        border-bottom-color: #161616;\n      }\n\n      /* Clause assist button (\uD83D\uDCCB) in input wrap */\n      .wxo-assist-btn {\n        position: absolute;\n        right: 46px;\n        bottom: 13px;\n        width: 26px;\n        height: 26px;\n        background: none;\n        border: none;\n        border-radius: 50%;\n        font-size: 15px;\n        cursor: pointer;\n        display: flex;\n        align-items: center;\n        justify-content: center;\n        color: #525252;\n        transition: background 0.15s, color 0.15s;\n        line-height: 1;\n        padding: 0;\n      }\n      .wxo-assist-btn:hover { background: #f4f4f4; }\n      .wxo-assist-btn--active { color: ").concat(primaryColor, "; background: #e8f4ff; }\n\n      /* Wider right padding when assist button is present */\n      .wxo-input-wrap--with-assist .wxo-chat-input { padding-right: 80px; }\n\n      /* Clause assist panel (absolute overlay inside .wxo-chat-window) */\n      .wxo-assist-panel {\n        position: absolute;\n        top: 48px;\n        bottom: 53px;\n        left: 0;\n        right: 0;\n        background: #e8f4ff;\n        border-top: 1px solid ").concat(primaryColor, ";\n        box-shadow: 0 -2px 8px rgba(0,0,0,0.1);\n        display: grid;\n        grid-template-rows: auto 1fr auto;\n        grid-template-columns: 100%;\n        min-height: 0;\n        overflow: hidden;\n        transform: translateY(100%);\n        opacity: 0;\n        pointer-events: none;\n        transition: transform 0.25s ease-out, opacity 0.25s ease-out;\n        z-index: 20;\n      }\n      .wxo-assist-panel--visible {\n        transform: translateY(0);\n        opacity: 1;\n        pointer-events: all;\n      }\n      .wxo-assist-header {\n        display: flex;\n        justify-content: space-between;\n        align-items: center;\n        padding: 12px 16px 10px;\n        border-bottom: 1px solid #c6d9ee;\n        flex-shrink: 0;\n      }\n      .wxo-assist-title {\n        font-size: 13px;\n        font-weight: 600;\n        color: #161616;\n      }\n      .wxo-assist-close {\n        background: transparent;\n        border: none;\n        color: #525252;\n        font-size: 20px;\n        line-height: 1;\n        cursor: pointer;\n        padding: 2px 6px;\n        border-radius: 4px;\n      }\n      .wxo-assist-close:hover { background: #d0e8f8; color: #161616; }\n      .wxo-assist-body {\n        min-height: 0;\n        overflow-y: auto;\n        padding: 12px 16px;\n        display: flex;\n        flex-direction: column;\n        gap: 12px;\n      }\n      .wxo-assist-row {\n        display: flex;\n        gap: 12px;\n        align-items: flex-start;\n      }\n      .wxo-assist-label {\n        font-size: 12px;\n        font-weight: 600;\n        color: #525252;\n        min-width: 72px;\n        flex-shrink: 0;\n        padding-top: 8px;\n      }\n      .wxo-assist-field {\n        flex: 1;\n        display: flex;\n        flex-direction: column;\n        gap: 6px;\n      }\n      .wxo-assist-select {\n        width: 100%;\n        padding: 6px 28px 6px 10px;\n        border: 1px solid #c6c6c6;\n        border-radius: 4px;\n        font-size: 13px;\n        font-family: inherit;\n        background: white url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23525252' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E\") no-repeat right 8px center;\n        -webkit-appearance: none;\n        -moz-appearance: none;\n        appearance: none;\n        box-sizing: border-box;\n      }\n      .wxo-assist-select:focus {\n        outline: none;\n        border-color: ").concat(primaryColor, ";\n        box-shadow: 0 0 0 1px ").concat(primaryColor, ";\n      }\n      .wxo-assist-select:disabled { background: #f4f4f4; color: #8d8d8d; }\n      .wxo-assist-preview {\n        background: #f4f4f4;\n        border: 1px solid #e0e0e0;\n        border-radius: 4px;\n        padding: 8px 10px;\n        font-size: 12px;\n        color: #161616;\n        line-height: 1.5;\n        min-height: 40px;\n      }\n      .wxo-assist-preview--empty { color: #8d8d8d; font-style: italic; }\n      .wxo-assist-preview-text {\n        display: -webkit-box;\n        -webkit-box-orient: vertical;\n        -webkit-line-clamp: 3;\n        overflow: hidden;\n      }\n      .wxo-assist-preview-text--expanded {\n        display: block;\n        overflow: visible;\n      }\n      .wxo-assist-preview-toggle {\n        background: none;\n        border: none;\n        color: ").concat(primaryColor, ";\n        font-size: 11px;\n        font-family: inherit;\n        cursor: pointer;\n        padding: 3px 0;\n        display: block;\n        width: fit-content;\n        margin-left: auto;\n        margin-top: 6px;\n      }\n      .wxo-assist-change {\n        width: 100%;\n        padding: 6px 10px;\n        border: 1px solid #c6c6c6;\n        border-radius: 4px;\n        font-size: 13px;\n        font-family: inherit;\n        resize: none;\n        box-sizing: border-box;\n      }\n      .wxo-assist-change:focus {\n        outline: none;\n        border-color: ").concat(primaryColor, ";\n        box-shadow: 0 0 0 1px ").concat(primaryColor, ";\n      }\n      .wxo-assist-generated {\n        background: #f4f4f4;\n        border: 1px solid #e0e0e0;\n        border-radius: 4px;\n        padding: 8px 10px;\n        font-size: 13px;\n        color: #161616;\n        line-height: 1.5;\n        min-height: 40px;\n      }\n      .wxo-assist-footer {\n        padding: 10px 16px 12px;\n        border-top: 1px solid #c6d9ee;\n        flex-shrink: 0;\n      }\n      .wxo-assist-insert {\n        width: 100%;\n        padding: 10px;\n        height: auto;\n        line-height: 1.4;\n        box-sizing: border-box;\n        background: ").concat(primaryColor, ";\n        color: white;\n        border: none;\n        border-radius: 4px;\n        font-size: 13px;\n        font-family: inherit;\n        cursor: pointer;\n        transition: background 0.15s;\n      }\n      .wxo-assist-insert:hover:not(:disabled) { background: #0353e9; }\n      .wxo-assist-insert:disabled { background: #c6c6c6; cursor: not-allowed; }\n    ");
     document.head.appendChild(style);
   }
   destroy() {
