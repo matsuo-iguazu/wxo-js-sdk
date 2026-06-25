@@ -12,6 +12,9 @@ examples/basic-example.html
 examples/garoon-embed-test.js
 examples/garoon-embed-test-*.js
 examples/aws/contract-assist-test.html
+examples/aws/test.html
+examples/aws/garoon-embed-0527+v3.js
+examples/aws/garoon-embed-0528+v3.js
 
 # Real contract documents (confidential)
 data/contracts/
