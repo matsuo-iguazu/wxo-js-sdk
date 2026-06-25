@@ -12,9 +12,13 @@
 | `agents` | ✓ | — | エージェント設定配列（1件以上） |
 | `region` | | `'us-south'` | IBM Cloud リージョン |
 | `deploymentPlatform` | | `'ibmcloud'` | デプロイプラットフォーム |
-| `feedbackWebhookUrl` | | — | フィードバック送信先 Webhook URL |
+| `feedbackWebhookUrl` | | — | フィードバック送信先 Webhook URL（レガシー） |
+| `supabaseUrl` | | — | Supabase プロジェクト URL（設定時はフィードバックを Supabase に送信） |
+| `supabaseAnonKey` | | — | Supabase anon key |
+| `supabaseTable` | | `'wxo_log'` | Supabase テーブル名 |
 | `feedbackUserInfo` | | — | フィードバックペイロードに付加するユーザー情報オブジェクト |
 | `feedbackOptions` | | — | フィードバックUIの詳細設定（後述） |
+| `defaultLocale` | | — | ウェルカム画面・スタータープロンプトのロケール（例: `'ja'`）。省略時はブラウザ言語 |
 | `features` | | — | 機能フラグ（後述） |
 | `theme` | | — | テーマ設定（後述） |
 | `debug` | | `false` | コンソールデバッグログの出力 |
@@ -31,6 +35,10 @@
 | `welcomeMessage` | | API取得失敗時のフォールバック用ウェルカムメッセージ |
 | `welcomeSubtitle` | | API取得失敗時のフォールバック用サブテキスト |
 | `quickStartPrompts` | | API取得失敗時のフォールバック用クイックスタートプロンプト（文字列配列） |
+| `clauseAssistData` | | 条項アシストパネル用データ（`window.wxoContractDataCustomer` 等） |
+| `clauseAssistAutoOpen` | | 条項アシストパネルを起動時に自動表示（省略時: `true`） |
+| `escalationWebhookUrl` | | 法務通知先 Teams Incoming Webhook URL（設定時のみ通知ボタン表示） |
+| `escalationTriggerPhrases` | | 通知ボタン表示のトリガーフレーズ配列 |
 
 ウェルカムメッセージ・クイックスタートプロンプトは通常 IBM watsonx Orchestrate のエージェント設定（YAML）から自動取得される。`welcomeMessage` 等はその取得に失敗した場合のフォールバックとして機能する。
 
@@ -80,14 +88,30 @@ window.wxOConfiguration = {
   crn: 'crn:v1:bluemix:...',
   agents: [
     {
-      id: 'agent1',
+      id: 'legal-agent',
+      name: '法務AIエージェント',
+      icon: '⚖️',
+      agentId: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx',
+      agentEnvironmentId: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx',
+      // 条項アシスト（任意）
+      clauseAssistData: window.wxoContractDataCustomer,
+      clauseAssistAutoOpen: true,
+      // 法務エスカレーション通知（任意）
+      escalationWebhookUrl: 'https://prod-xx.westus.logic.azure.com/...',
+      escalationTriggerPhrases: ['回答に必要な情報が見つかりません、法務担当に質問してください。']
+    },
+    {
+      id: 'general-agent',
       name: 'AIアシスタント',
       icon: '🤖',
       agentId: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx',
       agentEnvironmentId: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'
+      // escalation設定なし → 通知ボタン非表示
     }
   ],
-  feedbackWebhookUrl: 'https://your-webhook.example.com/',
+  // フィードバック送信先（Supabase 推奨）
+  supabaseUrl: 'https://xxxx.supabase.co',
+  supabaseAnonKey: 'eyJ...',
   feedbackUserInfo: { id: 1, name: 'ユーザー名' },
   feedbackOptions: {
     positive: { showDetails: false },
@@ -97,9 +121,10 @@ window.wxOConfiguration = {
       disclaimer: 'フィードバックは改善目的のみに使用されます。'
     }
   },
+  defaultLocale: 'ja',
   features: {
     feedback: true,
-    multiAgent: false
+    multiAgent: true
   },
   theme: {
     primaryColor: '#0f62fe'
