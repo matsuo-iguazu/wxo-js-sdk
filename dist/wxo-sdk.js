@@ -1940,7 +1940,10 @@
       feedbackEnabled = true,
       feedbackOptions = null,
       clauseAssistData = null,
-      clauseAssistAutoOpen = true
+      clauseAssistAutoOpen = true,
+      escalationWebhookUrl = null,
+      escalationTriggerPhrases = [],
+      userInfo = null
     }) {
       this.agent = agent;
       this.starterSettings = starterSettings;
@@ -1953,6 +1956,9 @@
       this.feedbackOptions = feedbackOptions;
       this.clauseAssistData = clauseAssistData;
       this.clauseAssistAutoOpen = clauseAssistAutoOpen;
+      this.escalationWebhookUrl = escalationWebhookUrl;
+      this.escalationTriggerPhrases = escalationTriggerPhrases;
+      this.userInfo = userInfo;
       this.el = null;
       this.messagesEl = null;
       this.inputEl = null;
@@ -2190,10 +2196,61 @@
         });
       }
       actionRow.appendChild(this._createCopyButton(fullText || ''));
+
+      // Escalation button: shown when agent response contains a trigger phrase
+      if (this.escalationWebhookUrl && this.escalationTriggerPhrases.length > 0) {
+        const triggered = this.escalationTriggerPhrases.some(p => (fullText || '').includes(p));
+        if (triggered) {
+          const escalateBtn = document.createElement('button');
+          escalateBtn.className = 'wxo-escalation-btn';
+          escalateBtn.textContent = '法務に通知';
+          escalateBtn.addEventListener('click', () => this._sendEscalationNotification(fullText || '', escalateBtn));
+          actionRow.appendChild(escalateBtn);
+        }
+      }
       this.streamingEl.appendChild(actionRow);
       if (fbPanelEl) this.streamingEl.appendChild(fbPanelEl);
       this.streamingEl = null;
       this._scrollToBottom();
+    }
+    _sendEscalationNotification(answer, btn) {
+      btn.disabled = true;
+      btn.textContent = '送信中...';
+      const question = [...this.messages].reverse().find(m => m.sender === 'user')?.text || '';
+      const userName = this.userInfo?.displayName || this.userInfo?.name || this.userInfo?.loginName || '不明';
+      const payload = {
+        '@type': 'MessageCard',
+        '@context': 'https://schema.org/extensions',
+        summary: '法務エスカレーション',
+        themeColor: '0077C8',
+        title: '📋 法務エスカレーション',
+        sections: [{
+          facts: [{
+            name: '質問者',
+            value: userName
+          }, {
+            name: 'エージェント',
+            value: this.agent.name
+          }, {
+            name: '質問',
+            value: question
+          }],
+          text: `**AIの回答:** ${answer.replace(/\n/g, '<br>')}`
+        }]
+      };
+      fetch(this.escalationWebhookUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      }).then(() => {
+        btn.textContent = '✓ 通知済み';
+        btn.classList.add('wxo-escalation-btn--sent');
+      }).catch(() => {
+        btn.disabled = false;
+        btn.textContent = '法務に通知';
+      });
     }
     _handleSend() {
       if (!this.inputEl || this.sendBtn.disabled) return;
@@ -2747,6 +2804,9 @@
         feedbackOptions,
         clauseAssistData: agent.clauseAssistData || null,
         clauseAssistAutoOpen: agent.clauseAssistAutoOpen !== false,
+        escalationWebhookUrl: agent.escalationWebhookUrl || null,
+        escalationTriggerPhrases: agent.escalationTriggerPhrases || [],
+        userInfo: this.config.getFeedbackUserInfo(),
         onSend: async text => {
           await this.client.sendMessage(text);
         },
@@ -3375,6 +3435,20 @@
       .wxo-message--agent .wxo-message__actions { opacity: 1; }
       .wxo-message--user .wxo-message__actions { justify-content: flex-end; }
       .wxo-message--user:hover .wxo-message__actions { opacity: 1; }
+      .wxo-escalation-btn {
+        background: #0077C8;
+        color: #fff;
+        border: none;
+        border-radius: 12px;
+        padding: 3px 10px;
+        font-size: 11px;
+        cursor: pointer;
+        margin-left: 4px;
+        transition: background 0.15s;
+      }
+      .wxo-escalation-btn:hover { background: #005A96; }
+      .wxo-escalation-btn:disabled { cursor: default; opacity: 0.7; }
+      .wxo-escalation-btn--sent { background: #6a9955; }
       .wxo-copy-btn {
         background: none;
         border: none;

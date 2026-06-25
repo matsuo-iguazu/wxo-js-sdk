@@ -238,6 +238,7 @@ class Config {
     return this.config?.feedbackOptions || null;
   }
 
+
   /**
    * Get locale for chat starter settings (welcome message / prompts).
    * Priority: config.defaultLocale → navigator.language → null

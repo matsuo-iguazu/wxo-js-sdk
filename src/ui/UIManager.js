@@ -140,6 +140,9 @@ class UIManager {
       feedbackOptions,
       clauseAssistData: agent.clauseAssistData || null,
       clauseAssistAutoOpen: agent.clauseAssistAutoOpen !== false,
+      escalationWebhookUrl: agent.escalationWebhookUrl || null,
+      escalationTriggerPhrases: agent.escalationTriggerPhrases || [],
+      userInfo: this.config.getFeedbackUserInfo(),
       onSend: async (text) => {
         await this.client.sendMessage(text);
       },
@@ -780,6 +783,20 @@ class UIManager {
       .wxo-message--agent .wxo-message__actions { opacity: 1; }
       .wxo-message--user .wxo-message__actions { justify-content: flex-end; }
       .wxo-message--user:hover .wxo-message__actions { opacity: 1; }
+      .wxo-escalation-btn {
+        background: #0077C8;
+        color: #fff;
+        border: none;
+        border-radius: 12px;
+        padding: 3px 10px;
+        font-size: 11px;
+        cursor: pointer;
+        margin-left: 4px;
+        transition: background 0.15s;
+      }
+      .wxo-escalation-btn:hover { background: #005A96; }
+      .wxo-escalation-btn:disabled { cursor: default; opacity: 0.7; }
+      .wxo-escalation-btn--sent { background: #6a9955; }
       .wxo-copy-btn {
         background: none;
         border: none;

@@ -18,10 +18,10 @@
       defaultLocale: 'ja',
       agents: [
         {
-          id: 'houmu04',
-          name: '法務AIエージェント（V3-仕入先向け契約用）',
-          agentId: 'e6d5714e-92a8-44bf-a752-51fc69314843',
-          agentEnvironmentId: '66d7ce9f-57bf-4a84-a798-8f2e9f51c522'
+        id: 'houmu04',
+        name: '法務エージェント（お客様向け回答集）',
+        agentId: 'a05c07e8-1dda-4dca-ba2c-d180a7b0b1e3',
+        agentEnvironmentId: '768c2b7c-e60d-42b1-a947-d872589f6fa0'
         },
         {
           id: 'houmu05',
@@ -46,6 +46,8 @@
           disclaimer: 'フィードバックに機密情報や個人を特定できる情報を含めないようにしてください'
         }
       },
+      escalationWebhookUrl: 'https://default72d4def95b274547a82974e223e514.66.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/c62a2027f2c94224813368f6b5ff5c69/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=UhGQZ19ZQfz50CAgrLf6CUJjDwvF5ZT6qj4BGchMS-g',
+      escalationTriggerPhrases: ['法務担当に質問してください'],
       debug: true
     };
   </script>
