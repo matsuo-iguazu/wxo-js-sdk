@@ -134,10 +134,6 @@ class Config {
       // Supabase table name for feedback
       feedbackUserInfo: null,
       // User info object to spread into feedback payload (optional)
-      escalationWebhookUrl: null,
-      // Teams Incoming Webhook URL for legal team notifications (optional)
-      escalationTriggerPhrases: [],
-      // Phrases in agent response that show the "notify" button (e.g. ['法務担当に質問してください'])
       feedbackOptions: {
         positive: {
           showDetails: true,
@@ -334,14 +330,6 @@ class Config {
     var _this$config7;
     return ((_this$config7 = this.config) === null || _this$config7 === void 0 ? void 0 : _this$config7.feedbackOptions) || null;
   }
-  getEscalationWebhookUrl() {
-    var _this$config8;
-    return ((_this$config8 = this.config) === null || _this$config8 === void 0 ? void 0 : _this$config8.escalationWebhookUrl) || null;
-  }
-  getEscalationTriggerPhrases() {
-    var _this$config9;
-    return ((_this$config9 = this.config) === null || _this$config9 === void 0 ? void 0 : _this$config9.escalationTriggerPhrases) || [];
-  }
 
   /**
    * Get locale for chat starter settings (welcome message / prompts).
@@ -349,8 +337,8 @@ class Config {
    * @returns {string|null}
    */
   getLocale() {
-    var _this$config0;
-    return ((_this$config0 = this.config) === null || _this$config0 === void 0 ? void 0 : _this$config0.defaultLocale) || (typeof navigator !== 'undefined' ? navigator.language : null) || null;
+    var _this$config8;
+    return ((_this$config8 = this.config) === null || _this$config8 === void 0 ? void 0 : _this$config8.defaultLocale) || (typeof navigator !== 'undefined' ? navigator.language : null) || null;
   }
 
   /**
@@ -358,8 +346,8 @@ class Config {
    * @returns {boolean} True if debug mode is enabled
    */
   isDebug() {
-    var _this$config1;
-    return ((_this$config1 = this.config) === null || _this$config1 === void 0 ? void 0 : _this$config1.debug) === true;
+    var _this$config9;
+    return ((_this$config9 = this.config) === null || _this$config9 === void 0 ? void 0 : _this$config9.debug) === true;
   }
 }
 
@@ -2910,8 +2898,8 @@ class UIManager {
         feedbackOptions,
         clauseAssistData: agent.clauseAssistData || null,
         clauseAssistAutoOpen: agent.clauseAssistAutoOpen !== false,
-        escalationWebhookUrl: _this2.config.getEscalationWebhookUrl(),
-        escalationTriggerPhrases: _this2.config.getEscalationTriggerPhrases(),
+        escalationWebhookUrl: agent.escalationWebhookUrl || null,
+        escalationTriggerPhrases: agent.escalationTriggerPhrases || [],
         userInfo: _this2.config.getFeedbackUserInfo(),
         onSend: function () {
           var _onSend = _asyncToGenerator(function* (text) {

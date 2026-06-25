@@ -51,10 +51,6 @@
         // Supabase table name for feedback
         feedbackUserInfo: null,
         // User info object to spread into feedback payload (optional)
-        escalationWebhookUrl: null,
-        // Teams Incoming Webhook URL for legal team notifications (optional)
-        escalationTriggerPhrases: [],
-        // Phrases in agent response that show the "notify" button (e.g. ['法務担当に質問してください'])
         feedbackOptions: {
           positive: {
             showDetails: true,
@@ -248,12 +244,6 @@
      */
     getFeedbackOptions() {
       return this.config?.feedbackOptions || null;
-    }
-    getEscalationWebhookUrl() {
-      return this.config?.escalationWebhookUrl || null;
-    }
-    getEscalationTriggerPhrases() {
-      return this.config?.escalationTriggerPhrases || [];
     }
 
     /**
@@ -2793,8 +2783,8 @@
         feedbackOptions,
         clauseAssistData: agent.clauseAssistData || null,
         clauseAssistAutoOpen: agent.clauseAssistAutoOpen !== false,
-        escalationWebhookUrl: this.config.getEscalationWebhookUrl(),
-        escalationTriggerPhrases: this.config.getEscalationTriggerPhrases(),
+        escalationWebhookUrl: agent.escalationWebhookUrl || null,
+        escalationTriggerPhrases: agent.escalationTriggerPhrases || [],
         userInfo: this.config.getFeedbackUserInfo(),
         onSend: async text => {
           await this.client.sendMessage(text);

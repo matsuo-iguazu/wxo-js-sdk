@@ -39,8 +39,6 @@ class Config {
       supabaseAnonKey: null,     // Supabase anon key
       supabaseTable: 'wxo_log',  // Supabase table name for feedback
       feedbackUserInfo: null,    // User info object to spread into feedback payload (optional)
-      escalationWebhookUrl: null,         // Teams Incoming Webhook URL for legal team notifications (optional)
-      escalationTriggerPhrases: [],       // Phrases in agent response that show the "notify" button (e.g. ['法務担当に質問してください'])
       feedbackOptions: {
         positive: {
           showDetails: true,
@@ -240,13 +238,6 @@ class Config {
     return this.config?.feedbackOptions || null;
   }
 
-  getEscalationWebhookUrl() {
-    return this.config?.escalationWebhookUrl || null;
-  }
-
-  getEscalationTriggerPhrases() {
-    return this.config?.escalationTriggerPhrases || [];
-  }
 
   /**
    * Get locale for chat starter settings (welcome message / prompts).

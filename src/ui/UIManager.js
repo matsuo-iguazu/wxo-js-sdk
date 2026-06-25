@@ -140,8 +140,8 @@ class UIManager {
       feedbackOptions,
       clauseAssistData: agent.clauseAssistData || null,
       clauseAssistAutoOpen: agent.clauseAssistAutoOpen !== false,
-      escalationWebhookUrl: this.config.getEscalationWebhookUrl(),
-      escalationTriggerPhrases: this.config.getEscalationTriggerPhrases(),
+      escalationWebhookUrl: agent.escalationWebhookUrl || null,
+      escalationTriggerPhrases: agent.escalationTriggerPhrases || [],
       userInfo: this.config.getFeedbackUserInfo(),
       onSend: async (text) => {
         await this.client.sendMessage(text);
