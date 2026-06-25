@@ -2365,6 +2365,7 @@ class ChatWindow {
       },
       body: JSON.stringify(payload)
     }).then(() => {
+      btn.disabled = false;
       btn.textContent = '✓ 通知済み';
       btn.classList.add('wxo-escalation-btn--sent');
     }).catch(() => {
