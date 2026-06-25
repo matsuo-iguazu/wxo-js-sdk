@@ -301,7 +301,7 @@ class ChatWindow {
       '@context': 'https://schema.org/extensions',
       summary: '法務AIエージェント エスカレーション',
       themeColor: '0077C8',
-      title: '🔲 法務AIエージェント エスカレーション',
+      title: '🔔 法務AIエージェント エスカレーション',
       sections: [
         {
           facts: [
