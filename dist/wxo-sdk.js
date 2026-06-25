@@ -2221,20 +2221,21 @@
       const payload = {
         '@type': 'MessageCard',
         '@context': 'https://schema.org/extensions',
-        summary: '法務エスカレーション',
+        summary: '法務AIエージェント エスカレーション',
         themeColor: '0077C8',
-        title: '📋 法務エスカレーション',
+        title: '🔲 法務AIエージェント エスカレーション',
         sections: [{
           facts: [{
-            name: '質問者',
-            value: userName
-          }, {
             name: 'エージェント',
             value: this.agent.name
           }, {
+            name: '質問者',
+            value: userName
+          }, {
             name: '質問',
             value: question
-          }],
+          }]
+        }, {
           text: `**AIの回答:** ${answer.replace(/\n/g, '<br>')}`
         }]
       };
