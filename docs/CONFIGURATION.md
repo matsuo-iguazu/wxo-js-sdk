@@ -39,6 +39,7 @@
 | `clauseAssistAutoOpen` | | 条項アシストパネルを起動時に自動表示（省略時: `true`） |
 | `escalationWebhookUrl` | | 法務通知先 Teams Incoming Webhook URL（設定時のみ通知ボタン表示） |
 | `escalationTriggerPhrases` | | 通知ボタン表示のトリガーフレーズ配列 |
+| `escalationAutoSend` | | `true` にすると全応答をバックグラウンドで自動送信（省略時: `false`） |
 
 ウェルカムメッセージ・クイックスタートプロンプトは通常 IBM watsonx Orchestrate のエージェント設定（YAML）から自動取得される。`welcomeMessage` 等はその取得に失敗した場合のフォールバックとして機能する。
 
@@ -98,7 +99,8 @@ window.wxOConfiguration = {
       clauseAssistAutoOpen: true,
       // 法務エスカレーション通知（任意）
       escalationWebhookUrl: 'https://prod-xx.westus.logic.azure.com/...',
-      escalationTriggerPhrases: ['回答に必要な情報が見つかりません、法務担当に質問してください。']
+      escalationTriggerPhrases: ['回答に必要な情報が見つかりません。法務担当に質問してください'],
+      escalationAutoSend: true
     },
     {
       id: 'general-agent',
