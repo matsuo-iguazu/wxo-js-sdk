@@ -278,7 +278,10 @@ class ChatWindow {
         const escalateBtn = document.createElement('button');
         escalateBtn.className = 'wxo-escalation-btn';
         escalateBtn.textContent = '法務に通知';
-        escalateBtn.addEventListener('click', () => this._sendEscalationNotification(fullText || '', escalateBtn));
+        escalateBtn.addEventListener('click', () => {
+          if (escalateBtn.dataset.sending || escalateBtn.classList.contains('wxo-escalation-btn--sent')) return;
+          this._sendEscalationNotification(fullText || '', escalateBtn);
+        });
         actionRow.appendChild(escalateBtn);
       }
     }
@@ -298,7 +301,7 @@ class ChatWindow {
   _sendEscalationNotification(answer, btn) {
     const isAutoSend = btn === null;
     if (!isAutoSend) {
-      btn.disabled = true;
+      btn.dataset.sending = 'true';
       btn.textContent = '送信中...';
     }
 
@@ -336,12 +339,13 @@ class ChatWindow {
       body: JSON.stringify(payload)
     }).then(() => {
       if (!isAutoSend) {
+        delete btn.dataset.sending;
         btn.textContent = '✓ 通知済み';
         btn.classList.add('wxo-escalation-btn--sent');
       }
     }).catch(() => {
       if (!isAutoSend) {
-        btn.disabled = false;
+        delete btn.dataset.sending;
         btn.textContent = '法務に通知';
       }
     });
