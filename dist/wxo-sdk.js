@@ -2246,7 +2246,6 @@
         },
         body: JSON.stringify(payload)
       }).then(() => {
-        btn.disabled = false;
         btn.textContent = '✓ 通知済み';
         btn.classList.add('wxo-escalation-btn--sent');
       }).catch(() => {
@@ -3450,7 +3449,7 @@
       }
       .wxo-escalation-btn:hover { background: #005A96; }
       .wxo-escalation-btn:disabled { cursor: default; opacity: 0.7; }
-      .wxo-escalation-btn--sent { background: #6a9955; }
+      .wxo-escalation-btn--sent { background: #6a9955; opacity: 1; cursor: default; }
       .wxo-copy-btn {
         background: none;
         border: none;
