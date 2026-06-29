@@ -796,7 +796,8 @@ class UIManager {
       }
       .wxo-escalation-btn:hover { background: #005A96; }
       .wxo-escalation-btn:disabled { cursor: default; opacity: 0.7; }
-      .wxo-escalation-btn--sent { background: #6a9955; opacity: 1; cursor: default; }
+      .wxo-escalation-btn--sent { background: #6a9955; }
+      .wxo-escalation-btn--sent:disabled { opacity: 1; cursor: default; }
       .wxo-copy-btn {
         background: none;
         border: none;
