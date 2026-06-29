@@ -2091,6 +2091,7 @@ class ChatWindow {
       clauseAssistAutoOpen = true,
       escalationWebhookUrl = null,
       escalationTriggerPhrases = [],
+      escalationAutoSend = false,
       userInfo = null
     } = _ref;
     this.agent = agent;
@@ -2106,6 +2107,7 @@ class ChatWindow {
     this.clauseAssistAutoOpen = clauseAssistAutoOpen;
     this.escalationWebhookUrl = escalationWebhookUrl;
     this.escalationTriggerPhrases = escalationTriggerPhrases;
+    this.escalationAutoSend = escalationAutoSend;
     this.userInfo = userInfo;
     this.el = null;
     this.messagesEl = null;
@@ -2327,6 +2329,11 @@ class ChatWindow {
         actionRow.appendChild(escalateBtn);
       }
     }
+
+    // Auto-send: silently post every response as a log record
+    if (this.escalationWebhookUrl && this.escalationAutoSend) {
+      this._sendEscalationNotification(fullText || '', null);
+    }
     this.streamingEl.appendChild(actionRow);
     if (fbPanelEl) this.streamingEl.appendChild(fbPanelEl);
     this.streamingEl = null;
@@ -2334,16 +2341,21 @@ class ChatWindow {
   }
   _sendEscalationNotification(answer, btn) {
     var _reverse$find, _this$userInfo, _this$userInfo2, _this$userInfo3;
-    btn.disabled = true;
-    btn.textContent = '送信中...';
+    var isAutoSend = btn === null;
+    if (!isAutoSend) {
+      btn.disabled = true;
+      btn.textContent = '送信中...';
+    }
     var question = ((_reverse$find = [...this.messages].reverse().find(m => m.sender === 'user')) === null || _reverse$find === void 0 ? void 0 : _reverse$find.text) || '';
     var userName = ((_this$userInfo = this.userInfo) === null || _this$userInfo === void 0 ? void 0 : _this$userInfo.displayName) || ((_this$userInfo2 = this.userInfo) === null || _this$userInfo2 === void 0 ? void 0 : _this$userInfo2.name) || ((_this$userInfo3 = this.userInfo) === null || _this$userInfo3 === void 0 ? void 0 : _this$userInfo3.loginName) || '不明';
+    var title = isAutoSend ? '📋 法務AIエージェント 応答記録' : '🔔 法務AIエージェント エスカレーション';
+    var summary = isAutoSend ? '法務AIエージェント 応答記録' : '法務AIエージェント エスカレーション';
     var payload = {
       '@type': 'MessageCard',
       '@context': 'https://schema.org/extensions',
-      summary: '法務AIエージェント エスカレーション',
+      summary,
       themeColor: '0077C8',
-      title: '🔔 法務AIエージェント エスカレーション',
+      title,
       sections: [{
         facts: [{
           name: 'エージェント',
@@ -2366,11 +2378,15 @@ class ChatWindow {
       },
       body: JSON.stringify(payload)
     }).then(() => {
-      btn.textContent = '✓ 通知済み';
-      btn.classList.add('wxo-escalation-btn--sent');
+      if (!isAutoSend) {
+        btn.textContent = '✓ 通知済み';
+        btn.classList.add('wxo-escalation-btn--sent');
+      }
     }).catch(() => {
-      btn.disabled = false;
-      btn.textContent = '法務に通知';
+      if (!isAutoSend) {
+        btn.disabled = false;
+        btn.textContent = '法務に通知';
+      }
     });
   }
   _handleSend() {
@@ -2922,6 +2938,7 @@ class UIManager {
         clauseAssistAutoOpen: agent.clauseAssistAutoOpen !== false,
         escalationWebhookUrl: agent.escalationWebhookUrl || null,
         escalationTriggerPhrases: agent.escalationTriggerPhrases || [],
+        escalationAutoSend: agent.escalationAutoSend === true,
         userInfo: _this2.config.getFeedbackUserInfo(),
         onSend: function () {
           var _onSend = _asyncToGenerator(function* (text) {

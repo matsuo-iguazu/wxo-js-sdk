@@ -142,6 +142,7 @@ class UIManager {
       clauseAssistAutoOpen: agent.clauseAssistAutoOpen !== false,
       escalationWebhookUrl: agent.escalationWebhookUrl || null,
       escalationTriggerPhrases: agent.escalationTriggerPhrases || [],
+      escalationAutoSend: agent.escalationAutoSend === true,
       userInfo: this.config.getFeedbackUserInfo(),
       onSend: async (text) => {
         await this.client.sendMessage(text);

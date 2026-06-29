@@ -1943,6 +1943,7 @@
       clauseAssistAutoOpen = true,
       escalationWebhookUrl = null,
       escalationTriggerPhrases = [],
+      escalationAutoSend = false,
       userInfo = null
     }) {
       this.agent = agent;
@@ -1958,6 +1959,7 @@
       this.clauseAssistAutoOpen = clauseAssistAutoOpen;
       this.escalationWebhookUrl = escalationWebhookUrl;
       this.escalationTriggerPhrases = escalationTriggerPhrases;
+      this.escalationAutoSend = escalationAutoSend;
       this.userInfo = userInfo;
       this.el = null;
       this.messagesEl = null;
@@ -2208,22 +2210,32 @@
           actionRow.appendChild(escalateBtn);
         }
       }
+
+      // Auto-send: silently post every response as a log record
+      if (this.escalationWebhookUrl && this.escalationAutoSend) {
+        this._sendEscalationNotification(fullText || '', null);
+      }
       this.streamingEl.appendChild(actionRow);
       if (fbPanelEl) this.streamingEl.appendChild(fbPanelEl);
       this.streamingEl = null;
       this._scrollToBottom();
     }
     _sendEscalationNotification(answer, btn) {
-      btn.disabled = true;
-      btn.textContent = '送信中...';
+      const isAutoSend = btn === null;
+      if (!isAutoSend) {
+        btn.disabled = true;
+        btn.textContent = '送信中...';
+      }
       const question = [...this.messages].reverse().find(m => m.sender === 'user')?.text || '';
       const userName = this.userInfo?.displayName || this.userInfo?.name || this.userInfo?.loginName || '不明';
+      const title = isAutoSend ? '📋 法務AIエージェント 応答記録' : '🔔 法務AIエージェント エスカレーション';
+      const summary = isAutoSend ? '法務AIエージェント 応答記録' : '法務AIエージェント エスカレーション';
       const payload = {
         '@type': 'MessageCard',
         '@context': 'https://schema.org/extensions',
-        summary: '法務AIエージェント エスカレーション',
+        summary,
         themeColor: '0077C8',
-        title: '🔔 法務AIエージェント エスカレーション',
+        title,
         sections: [{
           facts: [{
             name: 'エージェント',
@@ -2246,11 +2258,15 @@
         },
         body: JSON.stringify(payload)
       }).then(() => {
-        btn.textContent = '✓ 通知済み';
-        btn.classList.add('wxo-escalation-btn--sent');
+        if (!isAutoSend) {
+          btn.textContent = '✓ 通知済み';
+          btn.classList.add('wxo-escalation-btn--sent');
+        }
       }).catch(() => {
-        btn.disabled = false;
-        btn.textContent = '法務に通知';
+        if (!isAutoSend) {
+          btn.disabled = false;
+          btn.textContent = '法務に通知';
+        }
       });
     }
     _handleSend() {
@@ -2807,6 +2823,7 @@
         clauseAssistAutoOpen: agent.clauseAssistAutoOpen !== false,
         escalationWebhookUrl: agent.escalationWebhookUrl || null,
         escalationTriggerPhrases: agent.escalationTriggerPhrases || [],
+        escalationAutoSend: agent.escalationAutoSend === true,
         userInfo: this.config.getFeedbackUserInfo(),
         onSend: async text => {
           await this.client.sendMessage(text);
