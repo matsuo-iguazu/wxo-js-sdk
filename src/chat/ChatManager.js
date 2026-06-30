@@ -340,6 +340,15 @@ class ChatManager {
       return;
     }
 
+    // Flow agent without WebSocket: poll REST until response is stored
+    if (flowDetected && !wsBuffer) {
+      if (this.config.isDebug()) {
+        console.log('[wxo-sdk] Flow detected, WebSocket unavailable — polling REST for response');
+      }
+      await this._pollForFlowResponse(session, messageId);
+      return;
+    }
+
     // Simple agent: cleanup unused WS buffer
     if (wsBuffer) wsBuffer.cleanup();
 
@@ -425,6 +434,79 @@ class ChatManager {
     if (parsed.delta?.content) return parsed.delta.content;
     if (parsed.choices?.[0]?.delta?.content) return parsed.choices[0].delta.content;
     return null;
+  }
+
+  /**
+   * Poll REST for flow agent response when WebSocket is unavailable.
+   * Checks every 2 seconds until a new assistant message appears or timeout.
+   * @private
+   */
+  async _pollForFlowResponse(session, messageId) {
+    const INTERVAL_MS = 2000;
+    const TIMEOUT_MS = 120000;
+    const agentCountBefore = session.messages.filter(m => m.sender === 'agent').length;
+    const deadline = Date.now() + TIMEOUT_MS;
+
+    while (Date.now() < deadline) {
+      await new Promise(r => setTimeout(r, INTERVAL_MS));
+
+      try {
+        const messages = await this.httpClient.get(
+          `/mfe_home_archer/api/v1/threads/${session.threadId}/messages`
+        );
+        const agentCount = (messages || []).filter(m =>
+          m.role === 'assistant' &&
+          m.content?.some(c => c.response_type === 'text' && !c.text?.toLowerCase().includes('new flow has started'))
+        ).length;
+
+        if (agentCount > agentCountBefore) {
+          const finalText = this._extractFlowResponseText(messages) || '';
+          // Fire isDone without prior isFirst: streamDelta will create the bubble and fill it
+          // in one synchronous step, so loading dots → text with no empty-bubble flash.
+          this._triggerDeltaHandlers({ messageId, text: '', isFirst: false, isDone: true, fullText: finalText });
+          if (finalText) {
+            const agentMessage = { id: messageId, text: finalText, sender: 'agent', timestamp: Date.now() };
+            session.messages.push(agentMessage);
+            this._triggerMessageHandlers(agentMessage);
+          }
+          if (this.config.isDebug()) {
+            console.log('[wxo-sdk] Flow agent response (polled):', finalText);
+          }
+          return;
+        }
+      } catch (e) {
+        if (this.config.isDebug()) {
+          console.warn('[wxo-sdk] REST poll failed:', e.message);
+        }
+      }
+    }
+
+    // Timeout: fire isFirst + isDone back-to-back (synchronous, no render gap) to clear loading state
+    this._triggerDeltaHandlers({ messageId, text: '', isFirst: true, isDone: false });
+    this._triggerDeltaHandlers({ messageId, text: '', isFirst: false, isDone: true, fullText: '' });
+    if (this.config.isDebug()) {
+      console.warn('[wxo-sdk] Flow response polling timed out');
+    }
+  }
+
+  /**
+   * Extract assistant text from REST /threads/{id}/messages response.
+   * Filters out flow-notification messages and joins multiple tool-posted messages.
+   * @private
+   */
+  _extractFlowResponseText(messages) {
+    const agentMessages = (messages || []).filter(m =>
+      m.role === 'assistant' &&
+      m.content?.some(c => c.response_type === 'text' && !c.text?.toLowerCase().includes('new flow has started'))
+    );
+    if (agentMessages.length === 0) return null;
+    return agentMessages
+      .map(m => m.content
+        .filter(c => c.response_type === 'text' && !c.text?.toLowerCase().includes('new flow has started'))
+        .map(c => c.text || '')
+        .join('')
+      )
+      .join('\n\n') || null;
   }
 
   /**

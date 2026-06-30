@@ -951,6 +951,15 @@ class ChatManager {
         return;
       }
 
+      // Flow agent without WebSocket: poll REST until response is stored
+      if (flowDetected && !wsBuffer) {
+        if (_this7.config.isDebug()) {
+          console.log('[wxo-sdk] Flow detected, WebSocket unavailable — polling REST for response');
+        }
+        yield _this7._pollForFlowResponse(session, messageId);
+        return;
+      }
+
       // Simple agent: cleanup unused WS buffer
       if (wsBuffer) wsBuffer.cleanup();
 
@@ -1046,6 +1055,102 @@ class ChatManager {
   }
 
   /**
+   * Poll REST for flow agent response when WebSocket is unavailable.
+   * Checks every 2 seconds until a new assistant message appears or timeout.
+   * @private
+   */
+  _pollForFlowResponse(session, messageId) {
+    var _this8 = this;
+    return _asyncToGenerator(function* () {
+      var INTERVAL_MS = 2000;
+      var TIMEOUT_MS = 120000;
+      var agentCountBefore = session.messages.filter(m => m.sender === 'agent').length;
+      var deadline = Date.now() + TIMEOUT_MS;
+      while (Date.now() < deadline) {
+        yield new Promise(r => setTimeout(r, INTERVAL_MS));
+        try {
+          var messages = yield _this8.httpClient.get("/mfe_home_archer/api/v1/threads/".concat(session.threadId, "/messages"));
+          var agentCount = (messages || []).filter(m => {
+            var _m$content2;
+            return m.role === 'assistant' && ((_m$content2 = m.content) === null || _m$content2 === void 0 ? void 0 : _m$content2.some(c => {
+              var _c$text4;
+              return c.response_type === 'text' && !((_c$text4 = c.text) !== null && _c$text4 !== void 0 && _c$text4.toLowerCase().includes('new flow has started'));
+            }));
+          }).length;
+          if (agentCount > agentCountBefore) {
+            var finalText = _this8._extractFlowResponseText(messages) || '';
+            // Fire isDone without prior isFirst: streamDelta will create the bubble and fill it
+            // in one synchronous step, so loading dots → text with no empty-bubble flash.
+            _this8._triggerDeltaHandlers({
+              messageId,
+              text: '',
+              isFirst: false,
+              isDone: true,
+              fullText: finalText
+            });
+            if (finalText) {
+              var agentMessage = {
+                id: messageId,
+                text: finalText,
+                sender: 'agent',
+                timestamp: Date.now()
+              };
+              session.messages.push(agentMessage);
+              _this8._triggerMessageHandlers(agentMessage);
+            }
+            if (_this8.config.isDebug()) {
+              console.log('[wxo-sdk] Flow agent response (polled):', finalText);
+            }
+            return;
+          }
+        } catch (e) {
+          if (_this8.config.isDebug()) {
+            console.warn('[wxo-sdk] REST poll failed:', e.message);
+          }
+        }
+      }
+
+      // Timeout: fire isFirst + isDone back-to-back (synchronous, no render gap) to clear loading state
+      _this8._triggerDeltaHandlers({
+        messageId,
+        text: '',
+        isFirst: true,
+        isDone: false
+      });
+      _this8._triggerDeltaHandlers({
+        messageId,
+        text: '',
+        isFirst: false,
+        isDone: true,
+        fullText: ''
+      });
+      if (_this8.config.isDebug()) {
+        console.warn('[wxo-sdk] Flow response polling timed out');
+      }
+    })();
+  }
+
+  /**
+   * Extract assistant text from REST /threads/{id}/messages response.
+   * Filters out flow-notification messages and joins multiple tool-posted messages.
+   * @private
+   */
+  _extractFlowResponseText(messages) {
+    var agentMessages = (messages || []).filter(m => {
+      var _m$content3;
+      return m.role === 'assistant' && ((_m$content3 = m.content) === null || _m$content3 === void 0 ? void 0 : _m$content3.some(c => {
+        var _c$text5;
+        return c.response_type === 'text' && !((_c$text5 = c.text) !== null && _c$text5 !== void 0 && _c$text5.toLowerCase().includes('new flow has started'));
+      }));
+    });
+    if (agentMessages.length === 0) return null;
+    return agentMessages.map(m => m.content.filter(c => {
+      var _c$text6;
+      return c.response_type === 'text' && !((_c$text6 = c.text) !== null && _c$text6 !== void 0 && _c$text6.toLowerCase().includes('new flow has started'));
+    }).map(c => c.text || '').join('')).join('\n\n') || null;
+  }
+
+  /**
    * Send feedback for a message
    * Payload aligned with existing Code Engine / DB2 schema
    * @param {string} messageId
@@ -1055,13 +1160,13 @@ class ChatManager {
    */
   sendFeedback(messageId, isPositive) {
     var _arguments3 = arguments,
-      _this8 = this;
+      _this9 = this;
     return _asyncToGenerator(function* () {
       var categories = _arguments3.length > 2 && _arguments3[2] !== undefined ? _arguments3[2] : [];
       var text = _arguments3.length > 3 && _arguments3[3] !== undefined ? _arguments3[3] : '';
-      var session = _this8.sessions.get(_this8.currentAgentId);
-      var agentConfig = _this8.config.getAgent(_this8.currentAgentId);
-      var feedbackUserInfo = _this8.config.getFeedbackUserInfo() || {};
+      var session = _this9.sessions.get(_this9.currentAgentId);
+      var agentConfig = _this9.config.getAgent(_this9.currentAgentId);
+      var feedbackUserInfo = _this9.config.getFeedbackUserInfo() || {};
 
       // Find question/answer pair by locating the agent message and the user message before it
       var messages = (session === null || session === void 0 ? void 0 : session.messages) || [];
@@ -1070,8 +1175,8 @@ class ChatManager {
       var question = (precedingMsg === null || precedingMsg === void 0 ? void 0 : precedingMsg.sender) === 'user' ? precedingMsg.text : (session === null || session === void 0 ? void 0 : session.lastUserMessage) || '';
       var answer = agentMsgIndex >= 0 ? messages[agentMsgIndex].text || '' : '';
       var categoriesStr = Array.isArray(categories) ? categories.join(', ') : '';
-      var agentId = (agentConfig === null || agentConfig === void 0 ? void 0 : agentConfig.agentId) || _this8.currentAgentId;
-      var supabase = _this8.config.getSupabaseConfig();
+      var agentId = (agentConfig === null || agentConfig === void 0 ? void 0 : agentConfig.agentId) || _this9.currentAgentId;
+      var supabase = _this9.config.getSupabaseConfig();
       if (supabase) {
         var row = {
           garoonId: String(feedbackUserInfo.id || feedbackUserInfo.loginName || ''),
@@ -1083,7 +1188,7 @@ class ChatManager {
           text,
           agentId
         };
-        if (_this8.config.isDebug()) {
+        if (_this9.config.isDebug()) {
           console.log('[wxo-sdk] Supabase feedback row:', row);
         }
         yield fetch("".concat(supabase.url, "/rest/v1/").concat(supabase.table), {
@@ -1099,7 +1204,7 @@ class ChatManager {
       }
 
       // Legacy: Code Engine webhook
-      var webhookUrl = _this8.config.getFeedbackWebhookUrl();
+      var webhookUrl = _this9.config.getFeedbackWebhookUrl();
       var payload = _objectSpread2(_objectSpread2({}, feedbackUserInfo), {}, {
         question,
         answer,
@@ -1108,7 +1213,7 @@ class ChatManager {
         text,
         agentId
       });
-      if (_this8.config.isDebug()) {
+      if (_this9.config.isDebug()) {
         console.log('[wxo-sdk] Feedback payload:', payload);
       }
       if (webhookUrl) {
@@ -1158,27 +1263,27 @@ class ChatManager {
    * @param {string} agentId
    */
   endSession(agentId) {
-    var _this9 = this;
+    var _this0 = this;
     return _asyncToGenerator(function* () {
-      var session = _this9.sessions.get(agentId);
+      var session = _this0.sessions.get(agentId);
       if (!session || !session.threadId) {
-        _this9.sessions.delete(agentId);
+        _this0.sessions.delete(agentId);
         return;
       }
       try {
-        yield _this9.httpClient.patch("/mfe_home_archer/api/v1/threads/".concat(session.threadId), {
+        yield _this0.httpClient.patch("/mfe_home_archer/api/v1/threads/".concat(session.threadId), {
           status: 'closed'
         });
-        if (_this9.config.isDebug()) {
+        if (_this0.config.isDebug()) {
           console.log("[wxo-sdk] Thread closed: ".concat(session.threadId));
         }
       } catch (error) {
         console.warn('[wxo-sdk] Failed to close thread (non-fatal):', error.message);
       }
       session.isActive = false;
-      _this9.sessions.delete(agentId);
-      if (_this9.currentAgentId === agentId) {
-        _this9.currentAgentId = null;
+      _this0.sessions.delete(agentId);
+      if (_this0.currentAgentId === agentId) {
+        _this0.currentAgentId = null;
       }
     })();
   }
