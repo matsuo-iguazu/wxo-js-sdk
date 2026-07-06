@@ -2054,8 +2054,10 @@ class ContractAssistPanel {
         if (articleNum === '前文') return; // rendered as __preamble__ above
         var article = contract[articleNum];
         var preview30 = article.content.substring(0, 30);
-        var fullText = preview30 ? "".concat(articleNum, " (").concat(article.title, ") ").concat(preview30, "...") : "".concat(articleNum, " (").concat(article.title, ")");
-        var shortText = "".concat(articleNum, " (").concat(article.title, ")");
+        var t = (article.title || '').trim();
+        var titlePart = t && t !== articleNum.trim() && !articleNum.includes(t) ? " (".concat(t, ")") : '';
+        var fullText = preview30 ? "".concat(articleNum).concat(titlePart, " ").concat(preview30, "...") : "".concat(articleNum).concat(titlePart);
+        var shortText = "".concat(articleNum).concat(titlePart);
         var opt = document.createElement('option');
         opt.value = articleNum;
         opt.textContent = fullText;
@@ -2163,7 +2165,9 @@ class ContractAssistPanel {
       text += '前文';
     } else {
       var article = this.data[this._contract][this._article];
-      text += "".concat(this._article, " (").concat(article.title, ")");
+      var t = (article.title || '').trim();
+      var titlePart = t && t !== this._article.trim() && !this._article.includes(t) ? " (".concat(t, ")") : '';
+      text += "".concat(this._article).concat(titlePart);
       if (this._clause) text += "\u7B2C".concat(this._clause, "\u9805");
     }
     text += 'について、';

@@ -199,10 +199,12 @@ class ContractAssistPanel {
         if (articleNum === '前文') return; // rendered as __preamble__ above
         const article = contract[articleNum];
         const preview30 = article.content.substring(0, 30);
+        const t = (article.title || '').trim();
+        const titlePart = (t && t !== articleNum.trim() && !articleNum.includes(t)) ? ` (${t})` : '';
         const fullText = preview30
-          ? `${articleNum} (${article.title}) ${preview30}...`
-          : `${articleNum} (${article.title})`;
-        const shortText = `${articleNum} (${article.title})`;
+          ? `${articleNum}${titlePart} ${preview30}...`
+          : `${articleNum}${titlePart}`;
+        const shortText = `${articleNum}${titlePart}`;
         const opt = document.createElement('option');
         opt.value = articleNum;
         opt.textContent = fullText;
@@ -326,7 +328,9 @@ class ContractAssistPanel {
       text += '前文';
     } else {
       const article = this.data[this._contract][this._article];
-      text += `${this._article} (${article.title})`;
+      const t = (article.title || '').trim();
+      const titlePart = (t && t !== this._article.trim() && !this._article.includes(t)) ? ` (${t})` : '';
+      text += `${this._article}${titlePart}`;
       if (this._clause) text += `第${this._clause}項`;
     }
     text += 'について、';
