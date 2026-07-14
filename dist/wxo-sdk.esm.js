@@ -2473,9 +2473,7 @@ class ChatWindow {
         value: userName
       }]
     }, {
-      text: "**\u8CEA\u554F** ".concat(questionHtml, "<br><br>")
-    }, {
-      text: "**AI\u306E\u56DE\u7B54** ".concat(answerHtml, "<br><br>")
+      text: "**\u8CEA\u554F** ".concat(questionHtml, "<br><br>**AI\u306E\u56DE\u7B54** ").concat(answerHtml)
     }] : [{
       facts: [{
         name: 'エージェント',

@@ -322,8 +322,7 @@ class ChatWindow {
             { name: 'エージェント', value: this.agent.name },
             { name: '質問者', value: userName },
           ]},
-          { text: `**質問** ${questionHtml}<br><br>` },
-          { text: `**AIの回答** ${answerHtml}<br><br>` },
+          { text: `**質問** ${questionHtml}<br><br>**AIの回答** ${answerHtml}` },
         ]
       : [
           { facts: [
