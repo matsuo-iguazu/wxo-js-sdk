@@ -313,24 +313,34 @@ class ChatWindow {
       : '🔔 法務AIエージェント エスカレーション';
     const summary = isAutoSend ? '法務AIエージェント 応答記録' : '法務AIエージェント エスカレーション';
 
+    const answerHtml = answer.replace(/\n/g, '<br>');
+    const questionHtml = question.replace(/\n/g, '<br>');
+
+    const sections = isAutoSend
+      ? [
+          { facts: [
+            { name: 'エージェント', value: this.agent.name },
+            { name: '質問者', value: userName },
+          ]},
+          { text: `**質問** ${questionHtml}<br><br>` },
+          { text: `**AIの回答** ${answerHtml}<br><br>` },
+        ]
+      : [
+          { facts: [
+            { name: 'エージェント', value: this.agent.name },
+            { name: '質問者', value: userName },
+            { name: '質問', value: question },
+          ]},
+          { text: `**AIの回答** ${answerHtml}` },
+        ];
+
     const payload = {
       '@type': 'MessageCard',
       '@context': 'https://schema.org/extensions',
       summary,
       themeColor: '0077C8',
       title,
-      sections: [
-        {
-          facts: [
-            { name: 'エージェント', value: this.agent.name },
-            { name: '質問者', value: userName },
-            { name: '質問', value: question },
-          ]
-        },
-        {
-          text: `**AIの回答:** ${answer.replace(/\n/g, '<br>')}`
-        }
-      ]
+      sections,
     };
 
     fetch(isAutoSend ? this.allSendWebhookUrl : this.escalationWebhookUrl, {

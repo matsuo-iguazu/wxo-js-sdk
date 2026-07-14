@@ -2462,26 +2462,41 @@ class ChatWindow {
     var userName = ((_this$userInfo = this.userInfo) === null || _this$userInfo === void 0 ? void 0 : _this$userInfo.displayName) || ((_this$userInfo2 = this.userInfo) === null || _this$userInfo2 === void 0 ? void 0 : _this$userInfo2.name) || ((_this$userInfo3 = this.userInfo) === null || _this$userInfo3 === void 0 ? void 0 : _this$userInfo3.loginName) || '不明';
     var title = isAutoSend ? '📋 法務AIエージェント 応答記録' : '🔔 法務AIエージェント エスカレーション';
     var summary = isAutoSend ? '法務AIエージェント 応答記録' : '法務AIエージェント エスカレーション';
+    var answerHtml = answer.replace(/\n/g, '<br>');
+    var questionHtml = question.replace(/\n/g, '<br>');
+    var sections = isAutoSend ? [{
+      facts: [{
+        name: 'エージェント',
+        value: this.agent.name
+      }, {
+        name: '質問者',
+        value: userName
+      }]
+    }, {
+      text: "**\u8CEA\u554F** ".concat(questionHtml, "<br><br>")
+    }, {
+      text: "**AI\u306E\u56DE\u7B54** ".concat(answerHtml, "<br><br>")
+    }] : [{
+      facts: [{
+        name: 'エージェント',
+        value: this.agent.name
+      }, {
+        name: '質問者',
+        value: userName
+      }, {
+        name: '質問',
+        value: question
+      }]
+    }, {
+      text: "**AI\u306E\u56DE\u7B54** ".concat(answerHtml)
+    }];
     var payload = {
       '@type': 'MessageCard',
       '@context': 'https://schema.org/extensions',
       summary,
       themeColor: '0077C8',
       title,
-      sections: [{
-        facts: [{
-          name: 'エージェント',
-          value: this.agent.name
-        }, {
-          name: '質問者',
-          value: userName
-        }, {
-          name: '質問',
-          value: question
-        }]
-      }, {
-        text: "**AI\u306E\u56DE\u7B54:** ".concat(answer.replace(/\n/g, '<br>'))
-      }]
+      sections
     };
     fetch(isAutoSend ? this.allSendWebhookUrl : this.escalationWebhookUrl, {
       method: 'POST',
