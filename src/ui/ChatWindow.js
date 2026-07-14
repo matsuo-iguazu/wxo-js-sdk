@@ -5,7 +5,7 @@ import ContractAssistPanel from './ContractAssistPanel.js';
  * Renders the full chat interface: header, messages, input, feedback buttons
  */
 class ChatWindow {
-  constructor({ agent, messages = [], starterSettings = null, onSend, onFeedback, onMinimize, onReload, feedbackEnabled = true, feedbackOptions = null, clauseAssistData = null, clauseAssistAutoOpen = true, escalationWebhookUrl = null, escalationTriggerPhrases = [], escalationAutoSend = false, userInfo = null }) {
+  constructor({ agent, messages = [], starterSettings = null, onSend, onFeedback, onMinimize, onReload, feedbackEnabled = true, feedbackOptions = null, clauseAssistData = null, clauseAssistAutoOpen = true, escalationWebhookUrl = null, escalationTriggerPhrases = [], allSendWebhookUrl = null, userInfo = null }) {
     this.agent = agent;
     this.starterSettings = starterSettings;
     this.messages = [...messages];
@@ -19,7 +19,7 @@ class ChatWindow {
     this.clauseAssistAutoOpen = clauseAssistAutoOpen;
     this.escalationWebhookUrl = escalationWebhookUrl;
     this.escalationTriggerPhrases = escalationTriggerPhrases;
-    this.escalationAutoSend = escalationAutoSend;
+    this.allSendWebhookUrl = allSendWebhookUrl;
     this.userInfo = userInfo;
     this.el = null;
     this.messagesEl = null;
@@ -286,8 +286,8 @@ class ChatWindow {
       }
     }
 
-    // Auto-send: silently post every response as a log record
-    if (this.escalationWebhookUrl && this.escalationAutoSend) {
+    // Auto-send all responses to separate channel if allSendWebhookUrl URL is set
+    if (this.allSendWebhookUrl) {
       this._sendEscalationNotification(fullText || '', null);
     }
 
@@ -333,7 +333,7 @@ class ChatWindow {
       ]
     };
 
-    fetch(this.escalationWebhookUrl, {
+    fetch(isAutoSend ? this.allSendWebhookUrl : this.escalationWebhookUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)

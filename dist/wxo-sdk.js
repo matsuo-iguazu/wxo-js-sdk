@@ -2034,7 +2034,7 @@
       clauseAssistAutoOpen = true,
       escalationWebhookUrl = null,
       escalationTriggerPhrases = [],
-      escalationAutoSend = false,
+      allSendWebhookUrl = null,
       userInfo = null
     }) {
       this.agent = agent;
@@ -2050,7 +2050,7 @@
       this.clauseAssistAutoOpen = clauseAssistAutoOpen;
       this.escalationWebhookUrl = escalationWebhookUrl;
       this.escalationTriggerPhrases = escalationTriggerPhrases;
-      this.escalationAutoSend = escalationAutoSend;
+      this.allSendWebhookUrl = allSendWebhookUrl;
       this.userInfo = userInfo;
       this.el = null;
       this.messagesEl = null;
@@ -2305,8 +2305,8 @@
         }
       }
 
-      // Auto-send: silently post every response as a log record
-      if (this.escalationWebhookUrl && this.escalationAutoSend) {
+      // Auto-send all responses to separate channel if allSendWebhookUrl URL is set
+      if (this.allSendWebhookUrl) {
         this._sendEscalationNotification(fullText || '', null);
       }
       this.streamingEl.appendChild(actionRow);
@@ -2345,7 +2345,7 @@
           text: `**AIの回答:** ${answer.replace(/\n/g, '<br>')}`
         }]
       };
-      fetch(this.escalationWebhookUrl, {
+      fetch(isAutoSend ? this.allSendWebhookUrl : this.escalationWebhookUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -2918,7 +2918,7 @@
         clauseAssistAutoOpen: agent.clauseAssistAutoOpen !== false,
         escalationWebhookUrl: agent.escalationWebhookUrl || null,
         escalationTriggerPhrases: agent.escalationTriggerPhrases || [],
-        escalationAutoSend: agent.escalationAutoSend === true,
+        allSendWebhookUrl: agent.allSendWebhookUrl || null,
         userInfo: this.config.getFeedbackUserInfo(),
         onSend: async text => {
           await this.client.sendMessage(text);

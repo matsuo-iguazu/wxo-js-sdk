@@ -2200,7 +2200,7 @@ class ChatWindow {
       clauseAssistAutoOpen = true,
       escalationWebhookUrl = null,
       escalationTriggerPhrases = [],
-      escalationAutoSend = false,
+      allSendWebhookUrl = null,
       userInfo = null
     } = _ref;
     this.agent = agent;
@@ -2216,7 +2216,7 @@ class ChatWindow {
     this.clauseAssistAutoOpen = clauseAssistAutoOpen;
     this.escalationWebhookUrl = escalationWebhookUrl;
     this.escalationTriggerPhrases = escalationTriggerPhrases;
-    this.escalationAutoSend = escalationAutoSend;
+    this.allSendWebhookUrl = allSendWebhookUrl;
     this.userInfo = userInfo;
     this.el = null;
     this.messagesEl = null;
@@ -2442,8 +2442,8 @@ class ChatWindow {
       }
     }
 
-    // Auto-send: silently post every response as a log record
-    if (this.escalationWebhookUrl && this.escalationAutoSend) {
+    // Auto-send all responses to separate channel if allSendWebhookUrl URL is set
+    if (this.allSendWebhookUrl) {
       this._sendEscalationNotification(fullText || '', null);
     }
     this.streamingEl.appendChild(actionRow);
@@ -2483,7 +2483,7 @@ class ChatWindow {
         text: "**AI\u306E\u56DE\u7B54:** ".concat(answer.replace(/\n/g, '<br>'))
       }]
     };
-    fetch(this.escalationWebhookUrl, {
+    fetch(isAutoSend ? this.allSendWebhookUrl : this.escalationWebhookUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -3051,7 +3051,7 @@ class UIManager {
         clauseAssistAutoOpen: agent.clauseAssistAutoOpen !== false,
         escalationWebhookUrl: agent.escalationWebhookUrl || null,
         escalationTriggerPhrases: agent.escalationTriggerPhrases || [],
-        escalationAutoSend: agent.escalationAutoSend === true,
+        allSendWebhookUrl: agent.allSendWebhookUrl || null,
         userInfo: _this2.config.getFeedbackUserInfo(),
         onSend: function () {
           var _onSend = _asyncToGenerator(function* (text) {

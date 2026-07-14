@@ -61,4 +61,5 @@ analysis/
 examples/dist/
 
 # Documentation build
-docs/generated/
+docs/generated/examples/ibm-sdk-test.html
+examples/ibm-sdk-test.html
