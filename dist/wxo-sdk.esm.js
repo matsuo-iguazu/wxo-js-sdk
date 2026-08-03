@@ -697,8 +697,8 @@ class ChatManager {
         throw new Error("No session for agent: ".concat(_this3.currentAgentId));
       }
 
-      // Create thread on first message (lazy initialization)
-      if (!session.threadId) {
+      // Create thread on first message — skip for AWS (new MCSP2 API creates thread implicitly via /runs)
+      if (!session.threadId && !_this3.config.isAwsMode()) {
         yield _this3._createThread(session, text);
       }
 
@@ -767,9 +767,12 @@ class ChatManager {
         },
         context: {},
         agent_id: session.agent.agentId,
-        thread_id: session.threadId,
         environment_id: session.agent.agentEnvironmentId || ''
       };
+      // thread_id is null on first AWS message (thread created server-side); include when available
+      if (session.threadId) {
+        body.thread_id = session.threadId;
+      }
       if (_this5.config.isDebug()) {
         console.log('[wxo-sdk] Sending to runs:', body);
       }
@@ -931,6 +934,13 @@ class ChatManager {
           var lines = buffer.split('\n');
           buffer = lines.pop(); // keep incomplete last line
 
+          var onEvent = event => {
+            var _event$data;
+            if (!session.threadId && event !== null && event !== void 0 && (_event$data = event.data) !== null && _event$data !== void 0 && _event$data.thread_id) {
+              session.threadId = event.data.thread_id;
+              if (_this7.config.isDebug()) console.log('[wxo-sdk] Thread ID from stream:', session.threadId);
+            }
+          };
           for (var line of lines) {
             _this7._processStreamLine(line, text => {
               if (text.toLowerCase().includes('new flow has started')) {
@@ -945,7 +955,7 @@ class ChatManager {
                 isDone: false
               });
               isFirstDelta = false;
-            });
+            }, onEvent);
           }
         }
 
@@ -1025,6 +1035,7 @@ class ChatManager {
    * @private
    */
   _processStreamLine(line, onText) {
+    var onEvent = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : null;
     var trimmed = line.trim();
     if (!trimmed || trimmed === ':') return;
     if (trimmed.startsWith('data:')) {
@@ -1035,6 +1046,7 @@ class ChatManager {
         if (this.config.isDebug()) {
           console.log('[wxo-sdk] Stream event:', parsed);
         }
+        if (onEvent) onEvent(parsed);
         var text = this._extractTextFromEvent(parsed);
         if (text) onText(text);
       } catch (_) {
