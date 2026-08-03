@@ -1736,7 +1736,8 @@ class WxOClient {
       var orchestrateBase = _this6.config.isAwsMode() ? "/instances/".concat(_this6.config.getInstanceId(), "/orchestrate") : '/mfe_home_archer/api/v1/orchestrate';
       var path = "".concat(orchestrateBase, "/agents/").concat(encodeURIComponent(agent.agentId), "/chat-starter-settings");
       if (_this6.config.isAwsMode()) {
-        path += "?environment_id=".concat(encodeURIComponent(agent.agentEnvironmentId), "&language=en");
+        var lang = (locale || 'en').split('-')[0];
+        path += "?environment_id=".concat(encodeURIComponent(agent.agentEnvironmentId), "&language=").concat(lang);
       }
 
       // Hardcoded IBM default messages by locale (mirrors wxoLoader.js behavior)

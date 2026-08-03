@@ -1530,7 +1530,8 @@
       const orchestrateBase = this.config.isAwsMode() ? `/instances/${this.config.getInstanceId()}/orchestrate` : '/mfe_home_archer/api/v1/orchestrate';
       let path = `${orchestrateBase}/agents/${encodeURIComponent(agent.agentId)}/chat-starter-settings`;
       if (this.config.isAwsMode()) {
-        path += `?environment_id=${encodeURIComponent(agent.agentEnvironmentId)}&language=en`;
+        const lang = (locale || 'en').split('-')[0];
+        path += `?environment_id=${encodeURIComponent(agent.agentEnvironmentId)}&language=${lang}`;
       }
 
       // Hardcoded IBM default messages by locale (mirrors wxoLoader.js behavior)
