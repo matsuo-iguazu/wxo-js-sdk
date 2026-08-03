@@ -510,9 +510,9 @@
       this.errorHandlers = [];
     }
 
-    // Base path for threads/messages: /mfe_home_archer/api/v1 (IBM) or /instances/{id}/orchestrate (AWS)
+    // Base path for threads/messages: /mfe_home_archer/api/v1 (IBM) or /instances/{id} (AWS)
     _basePath() {
-      return this.config.isAwsMode() ? `/instances/${this.config.getInstanceId()}/orchestrate` : '/mfe_home_archer/api/v1';
+      return this.config.isAwsMode() ? `/instances/${this.config.getInstanceId()}` : '/mfe_home_archer/api/v1';
     }
 
     // Base path for runs/agents: /mfe_home_archer/api/v1/orchestrate (IBM) or /instances/{id}/orchestrate (AWS)
@@ -572,8 +572,8 @@
         throw new Error(`No session for agent: ${this.currentAgentId}`);
       }
 
-      // Create thread on first message — skip for AWS (new MCSP2 API creates thread implicitly via /runs)
-      if (!session.threadId && !this.config.isAwsMode()) {
+      // Create thread on first message (lazy initialization)
+      if (!session.threadId) {
         await this._createThread(session, text);
       }
 
