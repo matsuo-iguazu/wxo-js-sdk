@@ -342,12 +342,32 @@ class Config {
   }
 
   /**
+   * Check if running against the AWS (MCSP2) API structure.
+   * Detected by '_' separator in orchestrationID (format: tenantId_instanceId).
+   * @returns {boolean}
+   */
+  isAwsMode() {
+    var _this$config9;
+    return !!((_this$config9 = this.config) !== null && _this$config9 !== void 0 && (_this$config9 = _this$config9.orchestrationID) !== null && _this$config9 !== void 0 && _this$config9.includes('_'));
+  }
+
+  /**
+   * Extract instanceId from orchestrationID for AWS API paths.
+   * orchestrationID: "20260406-xxxx_20260526-yyyy" → "20260526-yyyy"
+   * @returns {string|null}
+   */
+  getInstanceId() {
+    if (!this.isAwsMode()) return null;
+    return this.config.orchestrationID.split('_')[1];
+  }
+
+  /**
    * Check if debug mode is enabled
    * @returns {boolean} True if debug mode is enabled
    */
   isDebug() {
-    var _this$config9;
-    return ((_this$config9 = this.config) === null || _this$config9 === void 0 ? void 0 : _this$config9.debug) === true;
+    var _this$config0;
+    return ((_this$config0 = this.config) === null || _this$config0 === void 0 ? void 0 : _this$config0.debug) === true;
   }
 }
 
@@ -607,6 +627,16 @@ class ChatManager {
     this.errorHandlers = [];
   }
 
+  // Base path for threads/messages: /mfe_home_archer/api/v1 (IBM) or /instances/{id}/orchestrate (AWS)
+  _basePath() {
+    return this.config.isAwsMode() ? "/instances/".concat(this.config.getInstanceId(), "/orchestrate") : '/mfe_home_archer/api/v1';
+  }
+
+  // Base path for runs/agents: /mfe_home_archer/api/v1/orchestrate (IBM) or /instances/{id}/orchestrate (AWS)
+  _orchestratePath() {
+    return this.config.isAwsMode() ? "/instances/".concat(this.config.getInstanceId(), "/orchestrate") : '/mfe_home_archer/api/v1/orchestrate';
+  }
+
   /**
    * Initialize chat manager (no-op, kept for API compatibility)
    */
@@ -703,7 +733,7 @@ class ChatManager {
   _createThread(session, firstMessageText) {
     var _this4 = this;
     return _asyncToGenerator(function* () {
-      var path = '/mfe_home_archer/api/v1/threads';
+      var path = "".concat(_this4._basePath(), "/threads");
       var body = {
         title: firstMessageText,
         agent_id: session.agent.agentId
@@ -727,7 +757,8 @@ class ChatManager {
   _sendToRuns(session, text) {
     var _this5 = this;
     return _asyncToGenerator(function* () {
-      var path = '/mfe_home_archer/api/v1/orchestrate/runs?stream=true&stream_timeout=180000';
+      var runsParams = _this5.config.isAwsMode() ? 'stream=true&stream_timeout=180000&multiple_content=true' : 'stream=true&stream_timeout=180000';
+      var path = "".concat(_this5._orchestratePath(), "/runs?").concat(runsParams);
       var body = {
         message: {
           role: 'user',
@@ -811,7 +842,7 @@ class ChatManager {
             _asyncToGenerator(function* () {
               var finalText = agentText;
               try {
-                var messages = yield _this6.httpClient.get("/mfe_home_archer/api/v1/threads/".concat(session.threadId, "/messages"));
+                var messages = yield _this6.httpClient.get("".concat(_this6._basePath(), "/threads/").concat(session.threadId, "/messages"));
                 var agentMessages = (messages || []).filter(m => {
                   var _m$content;
                   return m.role === 'assistant' && ((_m$content = m.content) === null || _m$content === void 0 ? void 0 : _m$content.some(c => {
@@ -1069,7 +1100,7 @@ class ChatManager {
       while (Date.now() < deadline) {
         yield new Promise(r => setTimeout(r, INTERVAL_MS));
         try {
-          var messages = yield _this8.httpClient.get("/mfe_home_archer/api/v1/threads/".concat(session.threadId, "/messages"));
+          var messages = yield _this8.httpClient.get("".concat(_this8._basePath(), "/threads/").concat(session.threadId, "/messages"));
           var agentCount = (messages || []).filter(m => {
             var _m$content2;
             return m.role === 'assistant' && ((_m$content2 = m.content) === null || _m$content2 === void 0 ? void 0 : _m$content2.some(c => {
@@ -1271,7 +1302,7 @@ class ChatManager {
         return;
       }
       try {
-        yield _this0.httpClient.patch("/mfe_home_archer/api/v1/threads/".concat(session.threadId), {
+        yield _this0.httpClient.patch("".concat(_this0._basePath(), "/threads/").concat(session.threadId), {
           status: 'closed'
         });
         if (_this0.config.isDebug()) {
@@ -1702,7 +1733,11 @@ class WxOClient {
       // API docs: chat-starter-settings does NOT support locale query param.
       // IBM wxoLoader handles locale client-side: when is_default_message=true, show locale-specific default.
       var locale = _this6.config.getLocale();
-      var path = "/mfe_home_archer/api/v1/orchestrate/agents/".concat(encodeURIComponent(agent.agentId), "/chat-starter-settings");
+      var orchestrateBase = _this6.config.isAwsMode() ? "/instances/".concat(_this6.config.getInstanceId(), "/orchestrate") : '/mfe_home_archer/api/v1/orchestrate';
+      var path = "".concat(orchestrateBase, "/agents/").concat(encodeURIComponent(agent.agentId), "/chat-starter-settings");
+      if (_this6.config.isAwsMode()) {
+        path += "?environment_id=".concat(encodeURIComponent(agent.agentEnvironmentId), "&language=en");
+      }
 
       // Hardcoded IBM default messages by locale (mirrors wxoLoader.js behavior)
       var defaultWelcomeMessages = {

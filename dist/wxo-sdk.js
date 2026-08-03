@@ -256,6 +256,25 @@
     }
 
     /**
+     * Check if running against the AWS (MCSP2) API structure.
+     * Detected by '_' separator in orchestrationID (format: tenantId_instanceId).
+     * @returns {boolean}
+     */
+    isAwsMode() {
+      return !!this.config?.orchestrationID?.includes('_');
+    }
+
+    /**
+     * Extract instanceId from orchestrationID for AWS API paths.
+     * orchestrationID: "20260406-xxxx_20260526-yyyy" → "20260526-yyyy"
+     * @returns {string|null}
+     */
+    getInstanceId() {
+      if (!this.isAwsMode()) return null;
+      return this.config.orchestrationID.split('_')[1];
+    }
+
+    /**
      * Check if debug mode is enabled
      * @returns {boolean} True if debug mode is enabled
      */
@@ -491,6 +510,16 @@
       this.errorHandlers = [];
     }
 
+    // Base path for threads/messages: /mfe_home_archer/api/v1 (IBM) or /instances/{id}/orchestrate (AWS)
+    _basePath() {
+      return this.config.isAwsMode() ? `/instances/${this.config.getInstanceId()}/orchestrate` : '/mfe_home_archer/api/v1';
+    }
+
+    // Base path for runs/agents: /mfe_home_archer/api/v1/orchestrate (IBM) or /instances/{id}/orchestrate (AWS)
+    _orchestratePath() {
+      return this.config.isAwsMode() ? `/instances/${this.config.getInstanceId()}/orchestrate` : '/mfe_home_archer/api/v1/orchestrate';
+    }
+
     /**
      * Initialize chat manager (no-op, kept for API compatibility)
      */
@@ -576,7 +605,7 @@
      * @private
      */
     async _createThread(session, firstMessageText) {
-      const path = '/mfe_home_archer/api/v1/threads';
+      const path = `${this._basePath()}/threads`;
       const body = {
         title: firstMessageText,
         agent_id: session.agent.agentId
@@ -597,7 +626,8 @@
      * @private
      */
     async _sendToRuns(session, text) {
-      const path = '/mfe_home_archer/api/v1/orchestrate/runs?stream=true&stream_timeout=180000';
+      const runsParams = this.config.isAwsMode() ? 'stream=true&stream_timeout=180000&multiple_content=true' : 'stream=true&stream_timeout=180000';
+      const path = `${this._orchestratePath()}/runs?${runsParams}`;
       const body = {
         message: {
           role: 'user',
@@ -677,7 +707,7 @@
             (async () => {
               let finalText = agentText;
               try {
-                const messages = await this.httpClient.get(`/mfe_home_archer/api/v1/threads/${session.threadId}/messages`);
+                const messages = await this.httpClient.get(`${this._basePath()}/threads/${session.threadId}/messages`);
                 const agentMessages = (messages || []).filter(m => m.role === 'assistant' && m.content?.some(c => c.response_type === 'text' && !c.text?.toLowerCase().includes('new flow has started')));
                 if (agentMessages.length > 0) {
                   finalText = agentMessages.map(m => m.content.filter(c => c.response_type === 'text' && !c.text?.toLowerCase().includes('new flow has started')).map(c => c.text || '').join('')).join('\n\n');
@@ -913,7 +943,7 @@
       while (Date.now() < deadline) {
         await new Promise(r => setTimeout(r, INTERVAL_MS));
         try {
-          const messages = await this.httpClient.get(`/mfe_home_archer/api/v1/threads/${session.threadId}/messages`);
+          const messages = await this.httpClient.get(`${this._basePath()}/threads/${session.threadId}/messages`);
           const agentCount = (messages || []).filter(m => m.role === 'assistant' && m.content?.some(c => c.response_type === 'text' && !c.text?.toLowerCase().includes('new flow has started'))).length;
           if (agentCount > agentCountBefore) {
             const finalText = this._extractFlowResponseText(messages) || '';
@@ -1092,7 +1122,7 @@
         return;
       }
       try {
-        await this.httpClient.patch(`/mfe_home_archer/api/v1/threads/${session.threadId}`, {
+        await this.httpClient.patch(`${this._basePath()}/threads/${session.threadId}`, {
           status: 'closed'
         });
         if (this.config.isDebug()) {
@@ -1497,7 +1527,11 @@
       // API docs: chat-starter-settings does NOT support locale query param.
       // IBM wxoLoader handles locale client-side: when is_default_message=true, show locale-specific default.
       const locale = this.config.getLocale();
-      const path = `/mfe_home_archer/api/v1/orchestrate/agents/${encodeURIComponent(agent.agentId)}/chat-starter-settings`;
+      const orchestrateBase = this.config.isAwsMode() ? `/instances/${this.config.getInstanceId()}/orchestrate` : '/mfe_home_archer/api/v1/orchestrate';
+      let path = `${orchestrateBase}/agents/${encodeURIComponent(agent.agentId)}/chat-starter-settings`;
+      if (this.config.isAwsMode()) {
+        path += `?environment_id=${encodeURIComponent(agent.agentEnvironmentId)}&language=en`;
+      }
 
       // Hardcoded IBM default messages by locale (mirrors wxoLoader.js behavior)
       const defaultWelcomeMessages = {

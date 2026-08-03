@@ -251,6 +251,25 @@ class Config {
   }
 
   /**
+   * Check if running against the AWS (MCSP2) API structure.
+   * Detected by '_' separator in orchestrationID (format: tenantId_instanceId).
+   * @returns {boolean}
+   */
+  isAwsMode() {
+    return !!(this.config?.orchestrationID?.includes('_'));
+  }
+
+  /**
+   * Extract instanceId from orchestrationID for AWS API paths.
+   * orchestrationID: "20260406-xxxx_20260526-yyyy" → "20260526-yyyy"
+   * @returns {string|null}
+   */
+  getInstanceId() {
+    if (!this.isAwsMode()) return null;
+    return this.config.orchestrationID.split('_')[1];
+  }
+
+  /**
    * Check if debug mode is enabled
    * @returns {boolean} True if debug mode is enabled
    */

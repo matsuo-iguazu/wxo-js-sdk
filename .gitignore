@@ -63,3 +63,4 @@ examples/dist/
 # Documentation build
 docs/generated/examples/ibm-sdk-test.html
 examples/ibm-sdk-test.html
+examples/ibm-embed-*.html

@@ -198,7 +198,13 @@ class WxOClient {
     // API docs: chat-starter-settings does NOT support locale query param.
     // IBM wxoLoader handles locale client-side: when is_default_message=true, show locale-specific default.
     const locale = this.config.getLocale();
-    const path = `/mfe_home_archer/api/v1/orchestrate/agents/${encodeURIComponent(agent.agentId)}/chat-starter-settings`;
+    const orchestrateBase = this.config.isAwsMode()
+      ? `/instances/${this.config.getInstanceId()}/orchestrate`
+      : '/mfe_home_archer/api/v1/orchestrate';
+    let path = `${orchestrateBase}/agents/${encodeURIComponent(agent.agentId)}/chat-starter-settings`;
+    if (this.config.isAwsMode()) {
+      path += `?environment_id=${encodeURIComponent(agent.agentEnvironmentId)}&language=en`;
+    }
 
     // Hardcoded IBM default messages by locale (mirrors wxoLoader.js behavior)
     const defaultWelcomeMessages = {

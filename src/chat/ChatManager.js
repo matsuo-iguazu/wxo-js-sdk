@@ -21,6 +21,20 @@ class ChatManager {
     this.errorHandlers = [];
   }
 
+  // Base path for threads/messages: /mfe_home_archer/api/v1 (IBM) or /instances/{id}/orchestrate (AWS)
+  _basePath() {
+    return this.config.isAwsMode()
+      ? `/instances/${this.config.getInstanceId()}/orchestrate`
+      : '/mfe_home_archer/api/v1';
+  }
+
+  // Base path for runs/agents: /mfe_home_archer/api/v1/orchestrate (IBM) or /instances/{id}/orchestrate (AWS)
+  _orchestratePath() {
+    return this.config.isAwsMode()
+      ? `/instances/${this.config.getInstanceId()}/orchestrate`
+      : '/mfe_home_archer/api/v1/orchestrate';
+  }
+
   /**
    * Initialize chat manager (no-op, kept for API compatibility)
    */
@@ -112,7 +126,7 @@ class ChatManager {
    * @private
    */
   async _createThread(session, firstMessageText) {
-    const path = '/mfe_home_archer/api/v1/threads';
+    const path = `${this._basePath()}/threads`;
     const body = {
       title: firstMessageText,
       agent_id: session.agent.agentId
@@ -136,7 +150,10 @@ class ChatManager {
    * @private
    */
   async _sendToRuns(session, text) {
-    const path = '/mfe_home_archer/api/v1/orchestrate/runs?stream=true&stream_timeout=180000';
+    const runsParams = this.config.isAwsMode()
+      ? 'stream=true&stream_timeout=180000&multiple_content=true'
+      : 'stream=true&stream_timeout=180000';
+    const path = `${this._orchestratePath()}/runs?${runsParams}`;
     const body = {
       message: {
         role: 'user',
@@ -225,7 +242,7 @@ class ChatManager {
             let finalText = agentText;
             try {
               const messages = await this.httpClient.get(
-                `/mfe_home_archer/api/v1/threads/${session.threadId}/messages`
+                `${this._basePath()}/threads/${session.threadId}/messages`
               );
               const agentMessages = (messages || []).filter(m =>
                 m.role === 'assistant' &&
@@ -452,7 +469,7 @@ class ChatManager {
 
       try {
         const messages = await this.httpClient.get(
-          `/mfe_home_archer/api/v1/threads/${session.threadId}/messages`
+          `${this._basePath()}/threads/${session.threadId}/messages`
         );
         const agentCount = (messages || []).filter(m =>
           m.role === 'assistant' &&
@@ -626,7 +643,7 @@ class ChatManager {
 
     try {
       await this.httpClient.patch(
-        `/mfe_home_archer/api/v1/threads/${session.threadId}`,
+        `${this._basePath()}/threads/${session.threadId}`,
         { status: 'closed' }
       );
       if (this.config.isDebug()) {
