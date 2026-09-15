@@ -105,6 +105,8 @@ npm run build    # dist/ へビルド
 npm run serve    # http://localhost:8080 でローカル確認
 ```
 
+ビルド後は [examples/basic-example.template.html](examples/basic-example.template.html) に実際の値を入力してブラウザで動作確認できる。
+
 変更後のデプロイ：
 
 ```bash
