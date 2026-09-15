@@ -20,41 +20,29 @@
 
   <div id="root"></div>
 
-  <!-- Optional: Markdown renderer for agent responses -->
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify/dist/purify.min.js"></script>
 
-  <!-- SDK configuration -->
   <script>
     window.wxOConfiguration = {
+      // wxO コンソールの「埋め込み」設定から取得した値を入力
       orchestrationID: 'YOUR_ORCHESTRATION_ID',
-      hostURL: 'https://us-south.watson-orchestrate.cloud.ibm.com',
-      region: 'us-south',
-      deploymentPlatform: 'ibmcloud',
+      hostURL: 'https://api.REGION.dl.watson-orchestrate.ibm.com',
       crn: 'YOUR_CRN',
-      rootElementID: 'root',
       agents: [
         {
           id: 'agent1',
-          name: 'エージェント1',
+          name: 'AIアシスタント',
           agentId: 'YOUR_AGENT_ID',
           agentEnvironmentId: 'YOUR_AGENT_ENVIRONMENT_ID'
         }
       ],
-      features: {
-        feedback: true,
-        multiAgent: true
-      },
-      debug: false
+      debug: true
     };
   </script>
 
-  <!-- Load SDK from GitHub Pages CDN -->
-  <!-- <script src="https://YOUR_ORG.github.io/wxo-js-sdk/dist/wxo-sdk.min.js"></script> -->
-
-  <!-- Or load locally during development -->
+  <!-- ローカルビルド確認用 -->
   <script src="../dist/wxo-sdk.min.js"></script>
-
-  <!-- Initialize SDK -->
   <script>
     wxoLoader.init().catch(console.error);
   </script>
