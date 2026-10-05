@@ -13,7 +13,7 @@ const dataDir = path.join(__dirname, '../data/contracts');
 // Which docx files contribute to which JSON key
 const mapping = [
   { docx: 'BP-IGUAZUビジネスパートナー契約書.docx',  jsonFile: 'customer.json', contractKey: 'IGUAZUビジネスパートナー契約書（BP）' },
-  { docx: 'BB-売買取引基本契約書.docx',              jsonFile: 'customer.json', contractKey: '売買取引基本契約書（BB）' },
+  { docx: 'BB-売買取引基本契約書_IG20260204-03売買E2.docx',              jsonFile: 'customer.json', contractKey: '売買取引基本契約書（BB）' },
   { docx: 'KBKF-購買基本契約書.docx',               jsonFile: 'supplier.json', contractKey: '購買基本契約書(業務委託条項含む)（KB/KF）' },
   { docx: 'KFKM-業務委託基本契約書.docx',           jsonFile: 'supplier.json', contractKey: '業務委託基本契約書（KF/KM）' },
 ];
